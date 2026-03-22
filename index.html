@@ -239,7 +239,7 @@
                     <div class="upload-title">轻量级 Markdown 阅读器</div>
                     <label class="btn-upload-lg">
                         <i class="fas fa-upload"></i> 打开 MD 文件
-                        <input type="file" id="file-upload-home" accept=".md, .markdown, .txt" hidden>
+                        <input type="file" id="file-upload-home" hidden>
                     </label>
                 </div>
             </div>
@@ -268,7 +268,7 @@
             <div class="menu-action" id="menu-new"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
             <label class="menu-action">
                 <i class="fas fa-file-upload"></i> 导入本地文件
-                <input type="file" id="file-upload-drawer" accept=".md, .markdown, .txt" hidden>
+                <input type="file" id="file-upload-drawer" hidden>
             </label>
             <div class="history-label">最近打开</div>
             <div id="history-list"></div>
@@ -429,7 +429,6 @@
             renderHistoryDrawer();
         }
 
-        // ================= 重点重构：历史记录列表渲染与置顶逻辑 =================
         function renderHistoryDrawer() {
             let history = getHistory();
             const list = document.getElementById('history-list');
@@ -440,7 +439,6 @@
                 return;
             }
 
-            // 排序逻辑：先按置顶（isPinned=true）排，再按时间排
             history.sort((a, b) => {
                 if (a.isPinned && !b.isPinned) return -1;
                 if (!a.isPinned && b.isPinned) return 1;
@@ -451,7 +449,6 @@
                 const item = document.createElement('div');
                 item.className = 'history-item';
                 
-                // 置顶图标
                 const pinIcon = file.isPinned ? `<i class="fas fa-thumbtack" style="color:var(--apple-blue); margin-right:6px; font-size:12px;"></i>` : '';
                 
                 item.innerHTML = `
@@ -477,24 +474,21 @@
                 const btnPin = item.querySelector('.action-pin');
                 const btnDelete = item.querySelector('.action-delete');
 
-                // 点击正文进入阅读模式
                 infoArea.onclick = () => {
                     currentFile = file;
                     closeDrawer();
                     switchState('read');
                 };
 
-                // 点击三个点打开悬浮菜单
                 moreBtn.onclick = (e) => {
                     e.stopPropagation();
-                    // 关闭其他已打开的菜单
                     document.querySelectorAll('.history-menu.show').forEach(m => {
                         if (m !== menu) m.classList.remove('show');
                     });
                     
                     if (!menu.classList.contains('show')) {
                         menu.classList.add('show');
-                        item.style.zIndex = '100'; // 提升层级防止被下方元素遮挡
+                        item.style.zIndex = '100';
                         moreBtn.classList.add('active');
                     } else {
                         menu.classList.remove('show');
@@ -503,22 +497,19 @@
                     }
                 };
 
-                // 置顶操作
                 btnPin.onclick = (e) => {
                     e.stopPropagation();
                     file.isPinned = !file.isPinned;
                     localStorage.setItem('md-pro-db', JSON.stringify(history));
-                    renderHistoryDrawer(); // 重新渲染列表以更新排序
+                    renderHistoryDrawer(); 
                 };
 
-                // 删除操作
                 btnDelete.onclick = (e) => {
                     e.stopPropagation();
                     if(confirm(`确定要删除 "${file.title}" 的记录吗？`)) {
                         history = history.filter(f => f.id !== file.id);
                         localStorage.setItem('md-pro-db', JSON.stringify(history));
                         
-                        // 如果删除的是当前正在查看的文档，自动退回主页
                         if(currentFile && currentFile.id === file.id) {
                             goHome();
                             if(window.innerWidth < 768) closeDrawer();
@@ -532,7 +523,6 @@
             });
         }
 
-        // 全局点击任意位置收起历史记录的悬浮菜单
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.history-more-btn')) {
                 document.querySelectorAll('.history-menu.show').forEach(m => m.classList.remove('show'));
