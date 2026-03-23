@@ -24,12 +24,13 @@
             --apple-blue: #007AFF; 
             --apple-green: #34C759;
             --apple-red: #FF3B30;
-            --bg-base: #F2F2F7;
-            --bg-surface: #FFFFFF;
+            --apple-gray: #8E8E93;
+            --bg-base: #F2F2F7;       /* iOS 底层背景色 */
+            --bg-surface: #FFFFFF;    /* iOS 卡片/内容区背景色 */
             --text-main: #000000;
             --text-secondary: #6C6C70;
             --border-color: #E5E5EA;
-            --header-bg: rgba(255, 255, 255, 0.85);
+            --header-bg: rgba(255, 255, 255, 0.85); /* 毛玻璃 */
             --sidebar-bg: #F8F8F8;
             --header-height: 55px;
         }
@@ -53,18 +54,16 @@
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             background-color: var(--bg-base);
             color: var(--text-main);
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
         }
 
-        /* ================= 2. 动态顶栏 ================= */
+        /* ================= 2. 动态顶栏与 Flex 布局优化 ================= */
         header {
             flex-shrink: 0;
             height: calc(var(--header-height) + env(safe-area-inset-top));
             padding-top: env(safe-area-inset-top);
             background: var(--header-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
             padding: 0 16px; z-index: 100;
@@ -72,27 +71,35 @@
 
         .header-section { display: flex; align-items: center; gap: 6px; flex: 1; }
         .header-center { flex: 2; justify-content: center; text-align: center; }
-        .header-right { justify-content: flex-end; }
+        .header-right { justify-content: flex-end; gap: 8px; }
 
+        /* 按钮与排版样式 */
         .icon-btn {
             background: none; border: none; color: var(--apple-blue);
             font-size: 1.3rem; padding: 8px; border-radius: 8px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+            display: flex; align-items: center; justify-content: center; transition: opacity 0.2s;
         }
         .icon-btn:active { opacity: 0.5; }
         
         .text-btn {
             background: none; border: none; color: var(--apple-blue);
-            font-size: 16px; font-weight: 500; padding: 6px 10px; border-radius: 6px; cursor: pointer;
-            display: flex; align-items: center; gap: 4px;
+            font-size: 16px; font-weight: 500; padding: 6px 10px; border-radius: 6px;
+            cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background 0.2s;
         }
-        .text-btn:active { opacity: 0.5; }
+        .text-btn:active { background: rgba(128,128,128,0.2); }
         .text-btn.danger { color: var(--apple-red); }
         .text-btn.primary { background: var(--apple-blue); color: white; font-weight: 600; }
-        
+        .text-btn.primary:active { background: var(--apple-blue); opacity: 0.7; }
+
         .logo-text { font-weight: 700; font-size: 1.1rem; color: var(--apple-blue); cursor: pointer; }
-        .file-title-display { font-weight: 600; font-size: 1rem; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
         
+        /* 核心修复：顶栏文件名标题布局，防止撐破 */
+        .file-title-display {
+            font-weight: 600; font-size: 1rem; color: var(--text-main);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 100%; flex-grow: 1; text-align: center; min-width: 0;
+        }
+
         .hidden { display: none !important; }
 
         /* ================= 3. 布局与绝对滚动层 ================= */
@@ -104,9 +111,10 @@
             transition: transform 0.3s ease, width 0.3s ease; flex-shrink: 0; z-index: 10;
         }
         .toc-sidebar.collapsed { width: 0; border: none; padding: 0; overflow: hidden; }
-        .toc-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 0 20px 10px; }
+        
+        .toc-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; padding: 0 20px 10px; letter-spacing: 0.5px; }
         .toc-link { display: block; padding: 8px 20px; color: var(--text-main); text-decoration: none; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid transparent; }
-        .toc-link:active { background: rgba(128,128,128,0.1); }
+        .toc-link:hover, .toc-link:active { background: rgba(128,128,128,0.1); }
         .toc-h1 { font-weight: 600; }
         .toc-h2 { padding-left: 30px; }
         .toc-h3 { padding-left: 40px; font-size: 13px; color: var(--text-secondary); }
@@ -118,18 +126,26 @@
             overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg-surface);
         }
 
-        /* ================= 4. 各视图样式 ================= */
+        /* ================= 4. 核心视图样式 ================= */
         .view-home { background: var(--bg-base); display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .upload-card { background: var(--bg-surface); border-radius: 16px; padding: 40px; text-align: center; border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .upload-card {
+            background: var(--bg-surface); border-radius: 16px; padding: 40px; text-align: center;
+            border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
         .upload-icon { font-size: 4rem; color: var(--apple-blue); margin-bottom: 20px; }
         .upload-title { font-size: 1.2rem; font-weight: 500; margin-bottom: 24px; color: var(--text-secondary); }
-        .btn-upload-lg { background: var(--apple-green); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+        .btn-upload-lg {
+            background: var(--apple-green); color: white; padding: 12px 24px; border-radius: 8px;
+            font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 8px;
+            cursor: pointer; transition: transform 0.1s;
+        }
+        .btn-upload-lg:active { transform: scale(0.96); }
 
         .view-read { padding: 30px 20px; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
         .markdown-container { max-width: 900px; margin: 0 auto; }
         .markdown-body { background: transparent !important; color: inherit !important; font-family: inherit !important; }
 
-        /* 代码块复制按钮样式 */
+        /* 代码块小复制按钮 */
         .markdown-body pre { position: relative; }
         .copy-code-btn {
             position: absolute; top: 8px; right: 8px;
@@ -144,9 +160,8 @@
         .edit-pane { background: var(--bg-surface); border-bottom: 1px solid var(--border-color); }
         .preview-pane { background: var(--bg-base); }
         
-        /* 记事本级清晰度的编辑框 */
-        #editor-textarea { 
-            width: 100%; height: 100%; resize: none; border: none; outline: none; 
+        #editor-textarea {
+            width: 100%; height: 100%; resize: none; border: none; outline: none;
             background: transparent; color: var(--text-main); 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; 
             font-size: 16px; line-height: 1.6; padding: 5px;
@@ -156,59 +171,68 @@
             .view-edit { flex-direction: row; }
             .edit-pane { border-bottom: none; border-right: 1px solid var(--border-color); }
         }
+
         @media (max-width: 767px) {
-            .toc-sidebar { position: absolute; left: -250px; height: 100%; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+            .toc-sidebar { position: absolute; left: -250px; z-index: 10; height: 100%; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
             .toc-sidebar.mobile-open { transform: translateX(250px); }
+            .desktop-only { display: none !important; }
+        }
+        @media (min-width: 768px) {
+            .mobile-only { display: none !important; }
         }
 
-        /* ================= 5. 左侧历史抽屉 ================= */
+        /* ================= 5. 左侧历史抽屉与遮罩 ================= */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; opacity: 0; transition: opacity 0.3s; }
-        .drawer { position: fixed; top: 0; left: 0; height: 100vh; width: 280px; background: var(--bg-surface); z-index: 201; transform: translateX(-100%); transition: transform 0.3s; display: flex; flex-direction: column; }
+        .drawer { position: fixed; top: 0; left: 0; height: 100vh; width: 280px; background: var(--bg-surface); z-index: 201; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); display: flex; flex-direction: column; }
         .drawer-header { padding: 20px; border-bottom: 1px solid var(--border-color); margin-top: env(safe-area-inset-top); font-weight: 600; font-size: 1.2rem; }
         .drawer-content { overflow-y: auto; flex-grow: 1; }
+        
         .menu-action { padding: 15px 20px; display: flex; align-items: center; gap: 12px; color: var(--apple-blue); font-weight: 500; cursor: pointer; border-bottom: 1px solid var(--border-color); }
         .menu-action:active { background: var(--border-color); }
-        .history-label { padding: 20px 20px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+        .history-label { padding: 20px 20px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
         
-        /* 带有更多选项的历史记录样式 */
-        .history-item { 
-            padding: 12px 16px; border-bottom: 1px solid var(--border-color); 
-            display: flex; align-items: center; position: relative;
-        }
-        .history-info {
-            flex-grow: 1; display: flex; flex-direction: column; gap: 4px;
-            overflow: hidden; cursor: pointer; padding-right: 10px;
-        }
+        .history-item { padding: 12px 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; position: relative; }
+        .history-info { flex-grow: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; cursor: pointer; padding-right: 10px; }
         .history-title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; }
         .history-date { font-size: 12px; color: var(--text-secondary); }
         
-        .history-more-btn {
-            background: none; border: none; color: var(--text-secondary); padding: 8px 12px;
-            cursor: pointer; border-radius: 6px; font-size: 16px;
-        }
+        .history-more-btn { background: none; border: none; color: var(--text-secondary); padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 16px; }
         .history-more-btn:active, .history-more-btn.active { background: rgba(128,128,128,0.15); color: var(--text-main); }
         
-        /* 弹出的悬浮菜单 */
         .history-menu {
-            position: absolute; right: 40px; top: 25px;
-            background: var(--bg-surface); border: 1px solid var(--border-color);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.12); border-radius: 8px;
-            display: none; flex-direction: column; z-index: 10; min-width: 140px; overflow: hidden;
+            position: absolute; right: 40px; top: 25px; background: var(--bg-surface); border: 1px solid var(--border-color);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12); border-radius: 8px; display: none; flex-direction: column; z-index: 10; min-width: 140px; overflow: hidden;
         }
         .history-menu.show { display: flex; }
         .history-menu-item { padding: 12px 16px; font-size: 14px; color: var(--text-main); display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .history-menu-item:active { background: var(--bg-base); }
         .history-menu-item.danger { color: var(--apple-red); }
-        
+
+        /* ================= 6. 移动端优化：iOS 风格悬浮操作菜单 ================= */
+        .mobile-action-menu {
+            position: fixed; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; right: 10px;
+            background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.12);
+            z-index: 300; display: none; flex-direction: column; padding: 8px 0;
+        }
+        .mobile-action-menu.show { display: flex; animation: slideInUp 0.3s ease; }
+        .action-item { padding: 16px 20px; display: flex; align-items: center; gap: 15px; cursor: pointer; color: var(--apple-blue); font-weight: 500; font-size: 17px; }
+        .action-item:active { background: rgba(128,128,128,0.15); }
+        .action-item.danger { color: var(--apple-red); }
+        .action-item.success { color: var(--apple-green); }
+        .action-item i { width: 20px; text-align: center; }
+
+        @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
     </style>
 </head>
 <body data-theme="light">
 
     <header id="main-header">
         <div class="header-section">
-            <button class="icon-btn" id="btn-hamburger"><i class="fas fa-bars"></i></button>
-            <button class="text-btn hidden" id="btn-back"><i class="fas fa-chevron-left"></i> 返回</button>
-            <button class="text-btn danger hidden" id="btn-edit-cancel">取消</button>
+            <button class="icon-btn" id="btn-hamburger" aria-label="菜单"><i class="fas fa-bars"></i></button>
+            <button class="icon-btn hidden" id="btn-back" aria-label="返回"><i class="fas fa-chevron-left"></i></button>
+            <button class="text-btn danger hidden desktop-only" id="btn-edit-cancel">取消</button>
             <div class="logo-text" id="header-logo"><i class="fab fa-markdown"></i> MD Reader</div>
         </div>
         
@@ -217,12 +241,17 @@
         </div>
         
         <div class="header-section header-right">
-            <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
+            <button class="icon-btn mobile-only hidden" id="btn-read-more" title="更多操作"><i class="fas fa-ellipsis-v"></i></button>
+            <button class="icon-btn mobile-only hidden" id="btn-edit-more" title="编辑选项"><i class="fas fa-ellipsis-v"></i></button>
+
+            <button class="icon-btn hidden desktop-only" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
+            <button class="text-btn primary hidden desktop-only" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
+            <button class="text-btn hidden desktop-only" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             
-            <button class="text-btn hidden" id="btn-edit-reset">重置</button>
-            <button class="text-btn primary hidden" id="btn-edit-save">保存</button>
-            <button class="icon-btn hidden" id="btn-read-edit" title="编辑文档"><i class="fas fa-edit"></i></button>
-            <button class="icon-btn" id="btn-theme"><i class="fas fa-moon"></i></button>
+            <button class="text-btn hidden desktop-only" id="btn-edit-reset">重置</button>
+            <button class="text-btn primary hidden desktop-only" id="btn-edit-save">保存</button>
+
+            <button class="icon-btn" id="btn-theme" aria-label="切换主题"><i class="fas fa-moon"></i></button>
         </div>
     </header>
 
@@ -263,7 +292,7 @@
 
     <div class="overlay" id="overlay"></div>
     <div class="drawer" id="drawer">
-        <div class="drawer-header">主菜单</div>
+        <div class="drawer-header">菜单选项</div>
         <div class="drawer-content">
             <div class="menu-action" id="menu-new"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
             <label class="menu-action">
@@ -273,6 +302,11 @@
             <div class="history-label">最近打开</div>
             <div id="history-list"></div>
         </div>
+    </div>
+
+    <div class="overlay" id="action-menu-overlay" style="z-index: 250;"></div>
+    <div class="mobile-action-menu" id="action-menu">
+        <div class="action-menu-content" id="action-menu-items"></div>
     </div>
 
     <script>
@@ -290,28 +324,39 @@
             markedKatex({ throwOnError: false, output: 'html' })
         );
 
+        let currentState = 'home';
         let currentFile = null;
         let originalContent = '';
 
-        const views = {
-            home: document.getElementById('view-home'),
-            read: document.getElementById('view-read'),
-            edit: document.getElementById('view-edit')
-        };
+        // 视图
+        const vHome = document.getElementById('view-home');
+        const vRead = document.getElementById('view-read');
+        const vEdit = document.getElementById('view-edit');
         const tocSidebar = document.getElementById('toc-sidebar');
         
-        const ui = {
+        // 顶栏按钮 (现在这里面不再包含底层的 drawer 和 overlay 了，绝对安全！)
+        const headerUI = {
             btnHamburger: document.getElementById('btn-hamburger'),
             btnBack: document.getElementById('btn-back'),
-            btnEditCancel: document.getElementById('btn-edit-cancel'),
-            headerLogo: document.getElementById('header-logo'),
-            headerTitle: document.getElementById('header-title'),
+            btnTheme: document.getElementById('btn-theme'),
+            btnHomeSample: document.getElementById('btn-home-sample'),
             btnReadCopy: document.getElementById('btn-read-copy'),
-            btnEditReset: document.getElementById('btn-edit-reset'),
-            btnEditSave: document.getElementById('btn-edit-save'),
             btnReadEdit: document.getElementById('btn-read-edit'),
-            btnTheme: document.getElementById('btn-theme')
+            btnReadMore: document.getElementById('btn-read-more'),
+            btnEditSave: document.getElementById('btn-edit-save'),
+            btnEditCancel: document.getElementById('btn-edit-cancel'),
+            btnEditReset: document.getElementById('btn-edit-reset'),
+            btnEditMore: document.getElementById('btn-edit-more'),
+            headerLogo: document.getElementById('header-logo'),
+            headerTitle: document.getElementById('header-title')
         };
+
+        // 独立获取结构组件
+        const overlay = document.getElementById('overlay');
+        const drawer = document.getElementById('drawer');
+        const actionMenu = document.getElementById('action-menu');
+        const actionMenuItems = document.getElementById('action-menu-items');
+        const actionMenuOverlay = document.getElementById('action-menu-overlay');
 
         const readerContent = document.getElementById('reader-content');
         const editorTextarea = document.getElementById('editor-textarea');
@@ -319,37 +364,53 @@
         const tocContent = document.getElementById('toc-content');
 
         function switchState(newState) {
-            Object.values(views).forEach(v => v.classList.add('hidden'));
-            Object.values(ui).forEach(el => el.classList.add('hidden'));
+            currentState = newState;
+            const isMobile = window.innerWidth < 768;
+            
+            vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
+            
+            // 仅对顶部菜单元素应用隐藏逻辑
+            Object.values(headerUI).forEach(el => { 
+                if(el && el.id !== 'btn-hamburger' && el.id !== 'btn-theme') el.classList.add('hidden'); 
+            });
 
             if (newState === 'home') {
-                views.home.classList.remove('hidden');
-                ui.btnHamburger.classList.remove('hidden');
-                ui.headerLogo.classList.remove('hidden');
-                ui.btnTheme.classList.remove('hidden');
+                vHome.classList.remove('hidden');
+                headerUI.btnHamburger.classList.remove('hidden');
+                headerUI.headerLogo.classList.remove('hidden');
+                headerUI.btnHomeSample.classList.remove('hidden');
                 tocSidebar.classList.add('collapsed');
                 
             } else if (newState === 'read') {
-                views.read.classList.remove('hidden');
-                ui.btnHamburger.classList.remove('hidden');
-                ui.btnBack.classList.remove('hidden');
-                ui.headerTitle.classList.remove('hidden');
-                ui.headerTitle.innerText = currentFile.title;
-                ui.btnReadCopy.classList.remove('hidden'); 
-                ui.btnReadEdit.classList.remove('hidden');
-                ui.btnTheme.classList.remove('hidden');
+                vRead.classList.remove('hidden');
+                headerUI.btnHamburger.classList.remove('hidden');
+                headerUI.btnBack.classList.remove('hidden');
+                headerUI.headerTitle.classList.remove('hidden');
+                headerUI.headerTitle.innerText = currentFile.title;
+                
+                if(isMobile) {
+                    headerUI.btnReadMore.classList.remove('hidden');
+                } else {
+                    headerUI.btnReadCopy.classList.remove('hidden');
+                    headerUI.btnReadEdit.classList.remove('hidden');
+                }
                 
                 renderMarkdown(currentFile.content, readerContent);
                 generateTOC();
-                if (window.innerWidth >= 768) tocSidebar.classList.remove('collapsed');
+                if (!isMobile) tocSidebar.classList.remove('collapsed');
                 
             } else if (newState === 'edit') {
-                views.edit.classList.remove('hidden');
-                ui.btnEditCancel.classList.remove('hidden');
-                ui.btnEditReset.classList.remove('hidden');
-                ui.headerTitle.classList.remove('hidden');
-                ui.headerTitle.innerText = "编辑: " + currentFile.title;
-                ui.btnEditSave.classList.remove('hidden');
+                vEdit.classList.remove('hidden');
+                headerUI.headerTitle.classList.remove('hidden');
+                headerUI.headerTitle.innerText = "编辑: " + currentFile.title;
+                
+                if(isMobile) {
+                    headerUI.btnEditMore.classList.remove('hidden');
+                } else {
+                    headerUI.btnEditSave.classList.remove('hidden');
+                    headerUI.btnEditCancel.classList.remove('hidden');
+                    headerUI.btnEditReset.classList.remove('hidden');
+                }
                 
                 tocSidebar.classList.add('collapsed');
                 originalContent = currentFile.content;
@@ -358,26 +419,91 @@
             }
         }
 
-        ui.btnReadCopy.onclick = () => {
-            navigator.clipboard.writeText(currentFile.content).then(() => {
-                ui.btnReadCopy.innerHTML = '<i class="fas fa-check"></i>';
-                setTimeout(() => ui.btnReadCopy.innerHTML = '<i class="fas fa-copy"></i>', 2000);
+        // ================= 移动端操作菜单逻辑 =================
+        function showActionMenu(items) {
+            actionMenuItems.innerHTML = '';
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `action-item ${item.danger ? 'danger' : ''} ${item.success ? 'success' : ''}`;
+                div.innerHTML = `<i class="${item.icon}"></i> ${item.text}`;
+                div.onclick = () => { closeActionMenu(); item.action(); };
+                actionMenuItems.appendChild(div);
             });
+            actionMenuOverlay.style.display = 'block';
+            setTimeout(() => { actionMenuOverlay.style.opacity = '1'; }, 10);
+            actionMenu.classList.add('show');
+        }
+
+        function closeActionMenu() {
+            actionMenuOverlay.style.opacity = '0';
+            actionMenu.classList.remove('show');
+            setTimeout(() => { actionMenuOverlay.style.display = 'none'; }, 300);
+        }
+
+        actionMenuOverlay.onclick = closeActionMenu;
+
+        // ================= 侧边栏/抽屉控制逻辑 =================
+        const openDrawer = () => { overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10); drawer.style.transform = 'translateX(0)'; };
+        const closeDrawer = () => { overlay.style.opacity = '0'; drawer.style.transform = 'translateX(-100%)'; setTimeout(() => overlay.style.display = 'none', 300); };
+        
+        headerUI.btnHamburger.onclick = openDrawer;
+        overlay.onclick = closeDrawer;
+
+        headerUI.btnBack.onclick = () => switchState('home');
+        headerUI.headerLogo.onclick = () => switchState('home');
+        headerUI.btnReadEdit.onclick = () => switchState('edit');
+        
+        // 桌面端复制与保存
+        headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
+        headerUI.btnEditSave.onclick = saveEdit;
+        headerUI.btnEditCancel.onclick = cancelEdit;
+        headerUI.btnEditReset.onclick = resetEdit;
+
+        // 移动端菜单绑定
+        headerUI.btnReadMore.onclick = () => {
+            showActionMenu([
+                { text: '编辑文档', icon: 'fas fa-edit', action: () => switchState('edit') },
+                { text: '复制全文', icon: 'fas fa-copy', action: () => copyContent(null) },
+                { text: '返回主页', icon: 'fas fa-home', action: () => switchState('home'), danger: true }
+            ]);
         };
 
-        function goHome() {
-            currentFile = null;
-            document.getElementById('file-upload-home').value = '';
-            document.getElementById('file-upload-drawer').value = '';
-            switchState('home');
-        }
-        
-        ui.btnBack.onclick = goHome;
-        ui.headerLogo.onclick = goHome;
+        headerUI.btnEditMore.onclick = () => {
+            showActionMenu([
+                { text: '保存修改', icon: 'fas fa-save', action: () => saveEdit(), success: true },
+                { text: '重置内容', icon: 'fas fa-undo', action: () => resetEdit() },
+                { text: '取消编辑', icon: 'fas fa-times', action: () => cancelEdit(), danger: true }
+            ]);
+        };
 
-        function renderMarkdown(text, target) {
-            target.innerHTML = marked.parse(text);
-            target.querySelectorAll('h1, h2, h3, h4').forEach((heading, i) => heading.id = `heading-${i}`);
+        function saveEdit() { currentFile.content = editorTextarea.value; saveToHistory(currentFile); switchState('read'); }
+        function cancelEdit() { if(editorTextarea.value === originalContent || confirm("放弃当前的修改？")) switchState('read'); }
+        function resetEdit() { if(confirm("恢复到编辑前的状态？")) { editorTextarea.value = originalContent; renderMarkdown(originalContent, editorPreview); } }
+        function copyContent(btnRef) { 
+            navigator.clipboard.writeText(currentFile.content).then(() => {
+                if(btnRef) {
+                    btnRef.innerHTML = '<i class="fas fa-check"></i>';
+                    setTimeout(() => btnRef.innerHTML = '<i class="fas fa-copy"></i>', 2000);
+                } else {
+                    alert("✅ 全文已复制到剪贴板！");
+                }
+            }); 
+        }
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const title = file.name.replace(/\.[^/.]+$/, "");
+            const reader = new FileReader();
+            reader.onload = e => { currentFile = { id: Date.now().toString(), title, content: e.target.result, isPinned: false }; saveToHistory(currentFile); switchState('read'); closeDrawer(); e.target.value = ''; };
+            reader.readAsText(file);
+        }
+        document.getElementById('file-upload-home').onchange = handleFile;
+        document.getElementById('file-upload-drawer').onchange = handleFile;
+
+        function renderMarkdown(text, target) { 
+            target.innerHTML = marked.parse(text); 
+            target.querySelectorAll('h1, h2, h3, h4').forEach((heading, i) => heading.id = `heading-${i}`); 
             
             target.querySelectorAll('pre code').forEach((block) => {
                 if (block.parentNode.querySelector('.copy-code-btn')) return; 
@@ -394,50 +520,31 @@
                 pre.appendChild(copyBtn);
             });
         }
-
+        
         function generateTOC() {
             tocContent.innerHTML = '';
             const headings = readerContent.querySelectorAll('h1, h2, h3, h4');
             if(headings.length === 0) return tocContent.innerHTML = '<div style="padding:20px;color:#888;">暂无目录</div>';
-            
             headings.forEach(h => {
-                const link = document.createElement('a');
-                link.href = `#${h.id}`;
-                link.className = `toc-link toc-${h.tagName.toLowerCase()}`;
-                link.innerText = h.innerText;
-                link.onclick = (e) => {
-                    e.preventDefault();
-                    const scrollContainer = document.getElementById('view-read');
-                    const targetOffset = h.offsetTop;
-                    scrollContainer.scrollTo({ top: targetOffset - 30, behavior: 'smooth' });
-                    
-                    if (window.innerWidth < 768) tocSidebar.classList.remove('mobile-open');
-                };
+                const link = document.createElement('a'); link.href = `#${h.id}`; link.className = `toc-link toc-${h.tagName.toLowerCase()}`; link.innerText = h.innerText;
+                link.onclick = (e) => { e.preventDefault(); h.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (window.innerWidth < 768) tocSidebar.classList.remove('mobile-open'); };
                 tocContent.appendChild(link);
             });
         }
-
         editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
 
         function getHistory() { return JSON.parse(localStorage.getItem('md-pro-db')) || []; }
         function saveToHistory(file) {
-            let history = getHistory();
-            file.timestamp = Date.now();
+            let history = getHistory(); file.timestamp = Date.now();
             const idx = history.findIndex(f => f.id === file.id);
             if (idx > -1) history[idx] = file; else history.unshift(file);
-            localStorage.setItem('md-pro-db', JSON.stringify(history.slice(0, 30)));
-            renderHistoryDrawer();
+            localStorage.setItem('md-pro-db', JSON.stringify(history.slice(0, 30))); renderHistoryDrawer();
         }
 
         function renderHistoryDrawer() {
             let history = getHistory();
-            const list = document.getElementById('history-list');
-            list.innerHTML = '';
-            
-            if (history.length === 0) {
-                list.innerHTML = '<div style="padding:20px;color:var(--text-secondary);font-size:13px;">暂无历史记录</div>';
-                return;
-            }
+            const list = document.getElementById('history-list'); list.innerHTML = '';
+            if (history.length === 0) { list.innerHTML = '<div style="padding:20px;color:var(--text-secondary);font-size:13px;">暂无历史记录</div>'; return; }
 
             history.sort((a, b) => {
                 if (a.isPinned && !b.isPinned) return -1;
@@ -446,9 +553,7 @@
             });
 
             history.forEach(file => {
-                const item = document.createElement('div');
-                item.className = 'history-item';
-                
+                const item = document.createElement('div'); item.className = 'history-item';
                 const pinIcon = file.isPinned ? `<i class="fas fa-thumbtack" style="color:var(--apple-blue); margin-right:6px; font-size:12px;"></i>` : '';
                 
                 item.innerHTML = `
@@ -468,57 +573,25 @@
                     </div>
                 `;
 
-                const infoArea = item.querySelector('.history-info');
+                item.querySelector('.history-info').onclick = () => { currentFile = file; closeDrawer(); switchState('read'); };
+                
                 const moreBtn = item.querySelector('.history-more-btn');
                 const menu = item.querySelector('.history-menu');
-                const btnPin = item.querySelector('.action-pin');
-                const btnDelete = item.querySelector('.action-delete');
-
-                infoArea.onclick = () => {
-                    currentFile = file;
-                    closeDrawer();
-                    switchState('read');
-                };
-
                 moreBtn.onclick = (e) => {
                     e.stopPropagation();
-                    document.querySelectorAll('.history-menu.show').forEach(m => {
-                        if (m !== menu) m.classList.remove('show');
-                    });
-                    
-                    if (!menu.classList.contains('show')) {
-                        menu.classList.add('show');
-                        item.style.zIndex = '100';
-                        moreBtn.classList.add('active');
-                    } else {
-                        menu.classList.remove('show');
-                        item.style.zIndex = '';
-                        moreBtn.classList.remove('active');
+                    document.querySelectorAll('.history-menu.show').forEach(m => { if (m !== menu) m.classList.remove('show'); });
+                    if (!menu.classList.contains('show')) { menu.classList.add('show'); item.style.zIndex = '100'; moreBtn.classList.add('active'); } 
+                    else { menu.classList.remove('show'); item.style.zIndex = ''; moreBtn.classList.remove('active'); }
+                };
+
+                item.querySelector('.action-pin').onclick = (e) => { e.stopPropagation(); file.isPinned = !file.isPinned; localStorage.setItem('md-pro-db', JSON.stringify(history)); renderHistoryDrawer(); };
+                item.querySelector('.action-delete').onclick = (e) => {
+                    e.stopPropagation();
+                    if(confirm(`确定删除 "${file.title}" 吗？`)) {
+                        history = history.filter(f => f.id !== file.id); localStorage.setItem('md-pro-db', JSON.stringify(history));
+                        if(currentFile && currentFile.id === file.id) { switchState('home'); if(window.innerWidth < 768) closeDrawer(); } else { renderHistoryDrawer(); }
                     }
                 };
-
-                btnPin.onclick = (e) => {
-                    e.stopPropagation();
-                    file.isPinned = !file.isPinned;
-                    localStorage.setItem('md-pro-db', JSON.stringify(history));
-                    renderHistoryDrawer(); 
-                };
-
-                btnDelete.onclick = (e) => {
-                    e.stopPropagation();
-                    if(confirm(`确定要删除 "${file.title}" 的记录吗？`)) {
-                        history = history.filter(f => f.id !== file.id);
-                        localStorage.setItem('md-pro-db', JSON.stringify(history));
-                        
-                        if(currentFile && currentFile.id === file.id) {
-                            goHome();
-                            if(window.innerWidth < 768) closeDrawer();
-                        } else {
-                            renderHistoryDrawer();
-                        }
-                    }
-                };
-
                 list.appendChild(item);
             });
         }
@@ -531,60 +604,16 @@
             }
         });
 
-        function handleFile(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const title = file.name.replace(/\.[^/.]+$/, "");
-            const reader = new FileReader();
-            reader.onload = e => {
-                currentFile = { id: Date.now().toString(), title, content: e.target.result, isPinned: false };
-                saveToHistory(currentFile);
-                closeDrawer();
-                switchState('read');
-            };
-            reader.readAsText(file);
-        }
-        document.getElementById('file-upload-home').onchange = handleFile;
-        document.getElementById('file-upload-drawer').onchange = handleFile;
+        headerUI.btnTheme.onclick = () => setTheme(document.body.getAttribute('data-theme') === 'light');
+        document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档"); if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n`, isPinned: false }; saveToHistory(currentFile); closeDrawer(); switchState('edit'); } };
+        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例', content: '# 欢迎\n体验移动端沉浸式阅读与悬浮菜单。', isPinned: false }; switchState('read'); };
 
-        const overlay = document.getElementById('overlay');
-        const drawer = document.getElementById('drawer');
-        function openDrawer() { overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10); drawer.style.transform = 'translateX(0)'; }
-        function closeDrawer() { overlay.style.opacity = '0'; drawer.style.transform = 'translateX(-100%)'; setTimeout(() => overlay.style.display = 'none', 300); }
+        window.onresize = () => switchState(currentState);
+
+        function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`; document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
+        const savedTheme = localStorage.getItem('md-theme'); setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
         
-        ui.btnHamburger.onclick = openDrawer;
-        overlay.onclick = closeDrawer;
-
-        ui.btnReadEdit.onclick = () => switchState('edit');
-        ui.btnEditCancel.onclick = () => { if(editorTextarea.value === originalContent || confirm("放弃修改？")) switchState('read'); };
-        ui.btnEditReset.onclick = () => { if(confirm("重置编辑内容？")) { editorTextarea.value = originalContent; renderMarkdown(originalContent, editorPreview); } };
-        ui.btnEditSave.onclick = () => { currentFile.content = editorTextarea.value; saveToHistory(currentFile); switchState('read'); };
-
-        document.getElementById('menu-new').onclick = () => {
-            const title = prompt("新文档名称：", "未命名文档");
-            if (title) {
-                currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n开始编写...`, isPinned: false };
-                saveToHistory(currentFile);
-                closeDrawer();
-                switchState('edit');
-            }
-        };
-
-        function setTheme(isDark) {
-            document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
-            document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`;
-            document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`;
-            
-            ui.btnTheme.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
-            localStorage.setItem('md-theme', isDark ? 'dark' : 'light');
-        }
-        
-        const savedTheme = localStorage.getItem('md-theme');
-        setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
-        ui.btnTheme.onclick = () => setTheme(document.body.getAttribute('data-theme') === 'light');
-
-        renderHistoryDrawer();
-        switchState('home');
+        renderHistoryDrawer(); switchState('home');
     </script>
 </body>
 </html>
