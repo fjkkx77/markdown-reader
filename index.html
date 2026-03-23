@@ -246,7 +246,10 @@
     <div class="drawer" id="drawer">
         <div class="drawer-header">
             <span>我的文件</span>
-            <button class="icon-btn" id="btn-new-folder" style="font-size: 16px;"><i class="fas fa-folder-plus"></i></button>
+            <div style="display: flex; gap: 4px;">
+                <button class="icon-btn" id="btn-sort" style="font-size: 16px; padding: 4px;" title="按时间排序"><i class="fas fa-sort-amount-down"></i></button>
+                <button class="icon-btn" id="btn-new-folder" style="font-size: 16px; padding: 4px;" title="新建文件夹"><i class="fas fa-folder-plus"></i></button>
+            </div>
         </div>
         <div class="drawer-content">
             <div class="menu-action" id="menu-new" style="color: var(--apple-green);"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
@@ -285,25 +288,22 @@
         let currentFile = null;
         let originalContent = '';
         
-        // 默认数据库结构
+        // 排序状态读取 (desc=最新在前, asc=最旧在前)
+        let sortOrder = localStorage.getItem('md-pro-sort') || 'desc';
+        
         const defaultDB = {
             folders: [{ id: 'root', name: '默认文件夹', isOpen: true }],
             files: []
         };
 
-        // 数据迁移与获取机制
         function getDB() {
             let rawStr = localStorage.getItem('md-pro-db');
             if (!rawStr) return JSON.parse(JSON.stringify(defaultDB));
             try {
                 let parsed = JSON.parse(rawStr);
-                // 兼容老版本：如果解析出来是个纯数组，转换为新结构
                 if (Array.isArray(parsed)) {
                     let migratedDB = JSON.parse(JSON.stringify(defaultDB));
-                    parsed.forEach(f => {
-                        f.folderId = 'root'; // 归入默认文件夹
-                        migratedDB.files.push(f);
-                    });
+                    parsed.forEach(f => { f.folderId = 'root'; migratedDB.files.push(f); });
                     localStorage.setItem('md-pro-db', JSON.stringify(migratedDB));
                     return migratedDB;
                 }
@@ -341,6 +341,7 @@
         const btnFabToc = document.getElementById('btn-fab-toc'); const tocOverlay = document.getElementById('toc-overlay');
         const readerContent = document.getElementById('reader-content'); const editorTextarea = document.getElementById('editor-textarea');
         const editorPreview = document.getElementById('editor-preview');
+        const btnSort = document.getElementById('btn-sort');
 
         // ================= UI 状态机控制 =================
         function switchState(newState) {
@@ -405,17 +406,27 @@
         actionMenuOverlay.onclick = closeActionMenu;
 
         // ================= 侧边栏文件系统 (文件夹渲染核心逻辑) =================
+        
+        // 初始化排序图标
+        btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
+        
+        // 绑定排序切换事件
+        btnSort.onclick = () => {
+            sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+            localStorage.setItem('md-pro-sort', sortOrder);
+            btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
+            renderDrawer();
+        };
+
         function renderDrawer() {
             let db = getDB();
             const list = document.getElementById('history-list');
             list.innerHTML = '';
 
             db.folders.forEach(folder => {
-                // 创建文件夹组
                 const group = document.createElement('div');
                 group.className = `folder-group ${folder.isOpen ? 'open' : ''}`;
                 
-                // 1. 文件夹 Header
                 const header = document.createElement('div');
                 header.className = 'folder-header';
                 header.innerHTML = `
@@ -430,23 +441,14 @@
                     </div>
                 `;
                 
-                // 点击折叠/展开
-                header.querySelector('.folder-info').onclick = () => {
-                    folder.isOpen = !folder.isOpen;
-                    saveDB(db); // 保存展开状态
-                };
+                header.querySelector('.folder-info').onclick = () => { folder.isOpen = !folder.isOpen; saveDB(db); };
 
-                // 重命名文件夹
                 header.querySelector('.rename-btn').onclick = (e) => {
                     e.stopPropagation();
                     let newName = prompt("重命名文件夹：", folder.name);
-                    if (newName && newName.trim() !== '') {
-                        folder.name = newName.trim();
-                        saveDB(db);
-                    }
+                    if (newName && newName.trim() !== '') { folder.name = newName.trim(); saveDB(db); }
                 };
 
-                // 删除文件夹
                 if (folder.id !== 'root') {
                     header.querySelector('.del-folder-btn').onclick = (e) => {
                         e.stopPropagation();
@@ -454,28 +456,25 @@
                         if (folderFiles.length > 0) {
                             if (confirm(`文件夹 [${folder.name}] 中包含 ${folderFiles.length} 个文件。\n删除后这些文件将被移动到 [默认文件夹] 中，是否继续？`)) {
                                 db.files.forEach(f => { if(f.folderId === folder.id) f.folderId = 'root'; });
-                                db.folders = db.folders.filter(f => f.id !== folder.id);
-                                saveDB(db);
+                                db.folders = db.folders.filter(f => f.id !== folder.id); saveDB(db);
                             }
                         } else {
-                            if (confirm(`确定删除空文件夹 [${folder.name}] 吗？`)) {
-                                db.folders = db.folders.filter(f => f.id !== folder.id);
-                                saveDB(db);
-                            }
+                            if (confirm(`确定删除空文件夹 [${folder.name}] 吗？`)) { db.folders = db.folders.filter(f => f.id !== folder.id); saveDB(db); }
                         }
                     };
                 }
 
-                // 2. 文件夹内的文件列表
                 const filesContainer = document.createElement('div');
                 filesContainer.className = 'folder-files';
                 
                 let folderFiles = db.files.filter(f => f.folderId === folder.id);
-                // 排序：置顶优先，然后按时间倒序
+                
+                // === 核心排序逻辑 ===
                 folderFiles.sort((a, b) => {
                     if (a.isPinned && !b.isPinned) return -1;
                     if (!a.isPinned && b.isPinned) return 1;
-                    return b.timestamp - a.timestamp;
+                    // 根据 sortOrder 状态决定按最新在前(desc)还是最旧在前(asc)
+                    return sortOrder === 'desc' ? b.timestamp - a.timestamp : a.timestamp - b.timestamp;
                 });
 
                 if (folderFiles.length === 0) {
@@ -494,10 +493,8 @@
                         <button class="history-more-btn"><i class="fas fa-ellipsis-h"></i></button>
                     `;
 
-                    // 点击进入阅读模式
                     item.querySelector('.history-info').onclick = () => { currentFile = file; closeDrawer(); switchState('read'); };
                     
-                    // 文件操作菜单 (包含移动功能)
                     item.querySelector('.history-more-btn').onclick = (e) => {
                         e.stopPropagation();
                         showActionMenu([
@@ -506,18 +503,16 @@
                                 file.isPinned = !file.isPinned; saveDB(db);
                             }},
                             { text: '移动到...', icon: 'fas fa-exchange-alt', action: () => {
-                                // 呼出二级菜单：选择目标文件夹
                                 let moveOptions = [{ text: '选择目标文件夹', isTitle: true }];
                                 db.folders.forEach(targetFolder => {
-                                    if (targetFolder.id !== file.folderId) { // 不显示当前所在的文件夹
+                                    if (targetFolder.id !== file.folderId) { 
                                         moveOptions.push({
-                                            text: targetFolder.name,
-                                            icon: 'fas fa-folder',
+                                            text: targetFolder.name, icon: 'fas fa-folder',
                                             action: () => { file.folderId = targetFolder.id; targetFolder.isOpen = true; saveDB(db); }
                                         });
                                     }
                                 });
-                                setTimeout(() => showActionMenu(moveOptions), 350); // 稍微延迟展示二级菜单
+                                setTimeout(() => showActionMenu(moveOptions), 350); 
                             }},
                             { text: '删除文档', icon: 'fas fa-trash-alt', danger: true, action: () => {
                                 if(confirm(`确定删除文档 "${file.title}" 吗？`)) {
@@ -530,14 +525,11 @@
                     filesContainer.appendChild(item);
                 });
 
-                group.appendChild(header);
-                group.appendChild(filesContainer);
-                list.appendChild(group);
+                group.appendChild(header); group.appendChild(filesContainer); list.appendChild(group);
             });
         }
 
         // ================= 顶部全局事件监听 =================
-        // 新建文件夹
         document.getElementById('btn-new-folder').onclick = () => {
             let name = prompt("请输入新文件夹名称：");
             if (name && name.trim() !== '') {
@@ -547,7 +539,6 @@
             }
         };
 
-        // 标题查看切换
         let tooltipTimer;
         headerUI.headerTitle.onclick = () => {
             if (!currentFile) return;
@@ -557,7 +548,6 @@
         };
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
 
-        // 顶栏菜单按钮绑定
         headerUI.btnReadMore.onclick = () => {
             const isDark = document.body.getAttribute('data-theme') === 'dark';
             showActionMenu([
@@ -578,7 +568,6 @@
             ]);
         };
 
-        // 抽屉及侧边栏开关
         const openDrawer = () => { overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10); drawer.style.transform = 'translateX(0)'; };
         const closeDrawer = () => { overlay.style.opacity = '0'; drawer.style.transform = 'translateX(-100%)'; setTimeout(() => overlay.style.display = 'none', 300); };
         headerUI.btnHamburger.onclick = openDrawer; overlay.onclick = closeDrawer;
@@ -592,11 +581,9 @@
         headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
         headerUI.btnEditSave.onclick = saveEdit; headerUI.btnEditCancel.onclick = cancelEdit; headerUI.btnEditReset.onclick = resetEdit;
 
-        // 文件处理
         function saveToCurrentFolder(fileParams) {
             let db = getDB();
             let newFile = { ...fileParams, timestamp: Date.now(), isPinned: false, folderId: 'root' };
-            // 如果已存在则更新，否则新增 (新增时默认放在 root)
             const idx = db.files.findIndex(f => f.id === newFile.id);
             if (idx > -1) { newFile.folderId = db.files[idx].folderId; newFile.isPinned = db.files[idx].isPinned; db.files[idx] = newFile; } 
             else { db.files.unshift(newFile); }
@@ -617,7 +604,6 @@
         document.getElementById('file-upload-home').onchange = handleFile;
         document.getElementById('file-upload-drawer').onchange = handleFile;
 
-        // 渲染相关
         function renderMarkdown(text, target) { 
             target.innerHTML = marked.parse(text); 
             target.querySelectorAll('h1, h2, h3, h4').forEach((heading, i) => heading.id = `heading-${i}`); 
@@ -641,11 +627,9 @@
         }
         editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
 
-        // 新建与示例
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档"); if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
-        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：强大的文件夹系统', content: '# 文件管理升级\n\n现在你可以在侧边栏新建文件夹，并在文档的更多菜单中将其**移动**到不同的分类下！' }; saveToCurrentFolder(currentFile); switchState('read'); };
+        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：文件排序功能', content: '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！' }; saveToCurrentFolder(currentFile); switchState('read'); };
 
-        // 主题与环境监听
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
         window.onresize = () => switchState(currentState);
@@ -653,7 +637,6 @@
         function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`; document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
         const savedTheme = localStorage.getItem('md-theme'); setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
         
-        // 启动应用
         renderDrawer(); switchState('home');
     </script>
 </body>
