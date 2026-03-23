@@ -25,12 +25,12 @@
             --apple-green: #34C759;
             --apple-red: #FF3B30;
             --apple-gray: #8E8E93;
-            --bg-base: #F2F2F7;       /* iOS 底层背景色 */
-            --bg-surface: #FFFFFF;    /* iOS 卡片/内容区背景色 */
+            --bg-base: #F2F2F7;
+            --bg-surface: #FFFFFF;
             --text-main: #000000;
             --text-secondary: #6C6C70;
             --border-color: #E5E5EA;
-            --header-bg: rgba(255, 255, 255, 0.85); /* 毛玻璃 */
+            --header-bg: rgba(255, 255, 255, 0.85);
             --sidebar-bg: #F8F8F8;
             --header-height: 55px;
         }
@@ -52,37 +52,34 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-base);
-            color: var(--text-main);
+            background-color: var(--bg-base); color: var(--text-main);
             display: flex; flex-direction: column;
         }
 
-        /* ================= 2. 动态顶栏与 Flex 布局优化 ================= */
+        /* ================= 2. 动态顶栏与 Flex 布局核心防挤压 ================= */
         header {
             flex-shrink: 0;
             height: calc(var(--header-height) + env(safe-area-inset-top));
             padding-top: env(safe-area-inset-top);
-            background: var(--header-bg);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            background: var(--header-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
             padding: 0 16px; z-index: 100;
         }
 
-        .header-section { display: flex; align-items: center; gap: 6px; flex: 1; }
-        .header-center { flex: 2; justify-content: center; text-align: center; }
-        .header-right { justify-content: flex-end; gap: 8px; }
+        .header-section { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+        .header-center { flex: 2; justify-content: center; text-align: center; min-width: 0; }
+        .header-right { justify-content: flex-end; gap: 8px; flex: 1; min-width: 0; }
 
-        /* 按钮与排版样式 */
         .icon-btn {
-            background: none; border: none; color: var(--apple-blue);
+            background: none; border: none; color: var(--apple-blue); flex-shrink: 0;
             font-size: 1.3rem; padding: 8px; border-radius: 8px; cursor: pointer;
             display: flex; align-items: center; justify-content: center; transition: opacity 0.2s;
         }
         .icon-btn:active { opacity: 0.5; }
         
         .text-btn {
-            background: none; border: none; color: var(--apple-blue);
+            background: none; border: none; color: var(--apple-blue); flex-shrink: 0;
             font-size: 16px; font-weight: 500; padding: 6px 10px; border-radius: 6px;
             cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background 0.2s;
         }
@@ -91,14 +88,15 @@
         .text-btn.primary { background: var(--apple-blue); color: white; font-weight: 600; }
         .text-btn.primary:active { background: var(--apple-blue); opacity: 0.7; }
 
-        .logo-text { font-weight: 700; font-size: 1.1rem; color: var(--apple-blue); cursor: pointer; }
+        .logo-text { font-weight: 700; font-size: 1.1rem; color: var(--apple-blue); cursor: pointer; flex-shrink: 0; }
         
-        /* 核心修复：顶栏文件名标题布局，防止撐破 */
+        /* 标题溢出省略号及可点击反馈 */
         .file-title-display {
             font-weight: 600; font-size: 1rem; color: var(--text-main);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            max-width: 100%; flex-grow: 1; text-align: center; min-width: 0;
+            max-width: 100%; display: block; cursor: pointer; transition: opacity 0.2s;
         }
+        .file-title-display:active { opacity: 0.4; }
 
         .hidden { display: none !important; }
 
@@ -111,48 +109,30 @@
             transition: transform 0.3s ease, width 0.3s ease; flex-shrink: 0; z-index: 10;
         }
         .toc-sidebar.collapsed { width: 0; border: none; padding: 0; overflow: hidden; }
-        
         .toc-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; padding: 0 20px 10px; letter-spacing: 0.5px; }
         .toc-link { display: block; padding: 8px 20px; color: var(--text-main); text-decoration: none; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid transparent; }
-        .toc-link:hover, .toc-link:active { background: rgba(128,128,128,0.1); }
+        .toc-link:active { background: rgba(128,128,128,0.1); }
         .toc-h1 { font-weight: 600; }
         .toc-h2 { padding-left: 30px; }
         .toc-h3 { padding-left: 40px; font-size: 13px; color: var(--text-secondary); }
 
         .main-content { flex-grow: 1; position: relative; background: var(--bg-surface); overflow: hidden; }
-
-        .view-layer {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg-surface);
-        }
+        .view-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg-surface); }
 
         /* ================= 4. 核心视图样式 ================= */
         .view-home { background: var(--bg-base); display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .upload-card {
-            background: var(--bg-surface); border-radius: 16px; padding: 40px; text-align: center;
-            border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
+        .upload-card { background: var(--bg-surface); border-radius: 16px; padding: 40px; text-align: center; border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .upload-icon { font-size: 4rem; color: var(--apple-blue); margin-bottom: 20px; }
         .upload-title { font-size: 1.2rem; font-weight: 500; margin-bottom: 24px; color: var(--text-secondary); }
-        .btn-upload-lg {
-            background: var(--apple-green); color: white; padding: 12px 24px; border-radius: 8px;
-            font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 8px;
-            cursor: pointer; transition: transform 0.1s;
-        }
+        .btn-upload-lg { background: var(--apple-green); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: transform 0.1s; }
         .btn-upload-lg:active { transform: scale(0.96); }
 
         .view-read { padding: 30px 20px; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
         .markdown-container { max-width: 900px; margin: 0 auto; }
         .markdown-body { background: transparent !important; color: inherit !important; font-family: inherit !important; }
 
-        /* 代码块小复制按钮 */
         .markdown-body pre { position: relative; }
-        .copy-code-btn {
-            position: absolute; top: 8px; right: 8px;
-            background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
-            border: none; border-radius: 4px; padding: 4px 8px;
-            font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s;
-        }
+        .copy-code-btn { position: absolute; top: 8px; right: 8px; background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; }
         .copy-code-btn:hover { opacity: 1; }
 
         .view-edit { display: flex; flex-direction: column; overflow: hidden; }
@@ -160,28 +140,12 @@
         .edit-pane { background: var(--bg-surface); border-bottom: 1px solid var(--border-color); }
         .preview-pane { background: var(--bg-base); }
         
-        #editor-textarea {
-            width: 100%; height: 100%; resize: none; border: none; outline: none;
-            background: transparent; color: var(--text-main); 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; 
-            font-size: 16px; line-height: 1.6; padding: 5px;
-        }
+        #editor-textarea { width: 100%; height: 100%; resize: none; border: none; outline: none; background: transparent; color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 16px; line-height: 1.6; padding: 5px; }
 
-        @media (min-width: 768px) {
-            .view-edit { flex-direction: row; }
-            .edit-pane { border-bottom: none; border-right: 1px solid var(--border-color); }
-        }
+        @media (min-width: 768px) { .view-edit { flex-direction: row; } .edit-pane { border-bottom: none; border-right: 1px solid var(--border-color); } }
+        @media (max-width: 767px) { .toc-sidebar { position: absolute; left: -250px; z-index: 10; height: 100%; box-shadow: 2px 0 10px rgba(0,0,0,0.1); } .toc-sidebar.mobile-open { transform: translateX(250px); } }
 
-        @media (max-width: 767px) {
-            .toc-sidebar { position: absolute; left: -250px; z-index: 10; height: 100%; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
-            .toc-sidebar.mobile-open { transform: translateX(250px); }
-            .desktop-only { display: none !important; }
-        }
-        @media (min-width: 768px) {
-            .mobile-only { display: none !important; }
-        }
-
-        /* ================= 5. 左侧历史抽屉与遮罩 ================= */
+        /* ================= 5. 悬浮组件 (抽屉 / 菜单 / 提示框) ================= */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; opacity: 0; transition: opacity 0.3s; }
         .drawer { position: fixed; top: 0; left: 0; height: 100vh; width: 280px; background: var(--bg-surface); z-index: 201; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); display: flex; flex-direction: column; }
         .drawer-header { padding: 20px; border-bottom: 1px solid var(--border-color); margin-top: env(safe-area-inset-top); font-weight: 600; font-size: 1.2rem; }
@@ -199,22 +163,14 @@
         .history-more-btn { background: none; border: none; color: var(--text-secondary); padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 16px; }
         .history-more-btn:active, .history-more-btn.active { background: rgba(128,128,128,0.15); color: var(--text-main); }
         
-        .history-menu {
-            position: absolute; right: 40px; top: 25px; background: var(--bg-surface); border: 1px solid var(--border-color);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.12); border-radius: 8px; display: none; flex-direction: column; z-index: 10; min-width: 140px; overflow: hidden;
-        }
+        .history-menu { position: absolute; right: 40px; top: 25px; background: var(--bg-surface); border: 1px solid var(--border-color); box-shadow: 0 8px 20px rgba(0,0,0,0.12); border-radius: 8px; display: none; flex-direction: column; z-index: 10; min-width: 140px; overflow: hidden; }
         .history-menu.show { display: flex; }
         .history-menu-item { padding: 12px 16px; font-size: 14px; color: var(--text-main); display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .history-menu-item:active { background: var(--bg-base); }
         .history-menu-item.danger { color: var(--apple-red); }
 
-        /* ================= 6. 移动端优化：iOS 风格悬浮操作菜单 ================= */
-        .mobile-action-menu {
-            position: fixed; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; right: 10px;
-            background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
-            border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.12);
-            z-index: 300; display: none; flex-direction: column; padding: 8px 0;
-        }
+        /* 移动端 iOS 风格底部悬浮操作菜单 */
+        .mobile-action-menu { position: fixed; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; right: 10px; background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.12); z-index: 300; display: none; flex-direction: column; padding: 8px 0; }
         .mobile-action-menu.show { display: flex; animation: slideInUp 0.3s ease; }
         .action-item { padding: 16px 20px; display: flex; align-items: center; gap: 15px; cursor: pointer; color: var(--apple-blue); font-weight: 500; font-size: 17px; }
         .action-item:active { background: rgba(128,128,128,0.15); }
@@ -224,6 +180,18 @@
 
         @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+        /* 点击标题后弹出的完整文件名提示框 (New) */
+        .title-tooltip {
+            position: fixed; top: calc(var(--header-height) + env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%);
+            background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            color: var(--text-main); padding: 10px 18px; border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color);
+            z-index: 1000; max-width: 90vw; word-break: break-all;
+            font-weight: 500; font-size: 14px; text-align: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .title-tooltip.show { opacity: 1; pointer-events: auto; }
+
     </style>
 </head>
 <body data-theme="light">
@@ -231,25 +199,25 @@
     <header id="main-header">
         <div class="header-section">
             <button class="icon-btn" id="btn-hamburger" aria-label="菜单"><i class="fas fa-bars"></i></button>
-            <button class="icon-btn hidden" id="btn-back" aria-label="返回"><i class="fas fa-chevron-left"></i></button>
-            <button class="text-btn danger hidden desktop-only" id="btn-edit-cancel">取消</button>
+            <button class="text-btn hidden" id="btn-back"><i class="fas fa-chevron-left"></i> 返回</button>
+            <button class="text-btn danger hidden" id="btn-edit-cancel">取消</button>
             <div class="logo-text" id="header-logo"><i class="fab fa-markdown"></i> MD Reader</div>
         </div>
         
         <div class="header-section header-center">
-            <div class="file-title-display hidden" id="header-title"></div>
+            <div class="file-title-display hidden" id="header-title" title="点击查看完整名称"></div>
         </div>
         
         <div class="header-section header-right">
-            <button class="icon-btn mobile-only hidden" id="btn-read-more" title="更多操作"><i class="fas fa-ellipsis-v"></i></button>
-            <button class="icon-btn mobile-only hidden" id="btn-edit-more" title="编辑选项"><i class="fas fa-ellipsis-v"></i></button>
+            <button class="icon-btn hidden" id="btn-read-more" title="更多操作"><i class="fas fa-ellipsis-h"></i></button>
+            <button class="icon-btn hidden" id="btn-edit-more" title="编辑选项"><i class="fas fa-ellipsis-h"></i></button>
 
-            <button class="icon-btn hidden desktop-only" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
-            <button class="text-btn primary hidden desktop-only" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
-            <button class="text-btn hidden desktop-only" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
+            <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
+            <button class="text-btn primary hidden" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
+            <button class="text-btn hidden" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             
-            <button class="text-btn hidden desktop-only" id="btn-edit-reset">重置</button>
-            <button class="text-btn primary hidden desktop-only" id="btn-edit-save">保存</button>
+            <button class="text-btn hidden" id="btn-edit-reset">重置</button>
+            <button class="text-btn primary hidden" id="btn-edit-save">保存</button>
 
             <button class="icon-btn" id="btn-theme" aria-label="切换主题"><i class="fas fa-moon"></i></button>
         </div>
@@ -292,7 +260,7 @@
 
     <div class="overlay" id="overlay"></div>
     <div class="drawer" id="drawer">
-        <div class="drawer-header">菜单选项</div>
+        <div class="drawer-header">主菜单</div>
         <div class="drawer-content">
             <div class="menu-action" id="menu-new"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
             <label class="menu-action">
@@ -308,6 +276,8 @@
     <div class="mobile-action-menu" id="action-menu">
         <div class="action-menu-content" id="action-menu-items"></div>
     </div>
+
+    <div id="title-tooltip" class="title-tooltip"></div>
 
     <script>
         const { markedHighlight } = globalThis.markedHighlight;
@@ -328,13 +298,11 @@
         let currentFile = null;
         let originalContent = '';
 
-        // 视图
         const vHome = document.getElementById('view-home');
         const vRead = document.getElementById('view-read');
         const vEdit = document.getElementById('view-edit');
         const tocSidebar = document.getElementById('toc-sidebar');
         
-        // 顶栏按钮 (现在这里面不再包含底层的 drawer 和 overlay 了，绝对安全！)
         const headerUI = {
             btnHamburger: document.getElementById('btn-hamburger'),
             btnBack: document.getElementById('btn-back'),
@@ -351,39 +319,35 @@
             headerTitle: document.getElementById('header-title')
         };
 
-        // 独立获取结构组件
         const overlay = document.getElementById('overlay');
         const drawer = document.getElementById('drawer');
         const actionMenu = document.getElementById('action-menu');
         const actionMenuItems = document.getElementById('action-menu-items');
         const actionMenuOverlay = document.getElementById('action-menu-overlay');
+        const titleTooltip = document.getElementById('title-tooltip');
 
         const readerContent = document.getElementById('reader-content');
         const editorTextarea = document.getElementById('editor-textarea');
         const editorPreview = document.getElementById('editor-preview');
         const tocContent = document.getElementById('toc-content');
 
+        // ================= 核心状态机控制 =================
         function switchState(newState) {
             currentState = newState;
-            const isMobile = window.innerWidth < 768;
+            const isMobile = window.innerWidth < 768; 
             
             vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
-            
-            // 仅对顶部菜单元素应用隐藏逻辑
-            Object.values(headerUI).forEach(el => { 
-                if(el && el.id !== 'btn-hamburger' && el.id !== 'btn-theme') el.classList.add('hidden'); 
-            });
+            Object.values(headerUI).forEach(el => { if(el && el.id !== 'btn-hamburger') el.classList.add('hidden'); });
 
             if (newState === 'home') {
                 vHome.classList.remove('hidden');
-                headerUI.btnHamburger.classList.remove('hidden');
                 headerUI.headerLogo.classList.remove('hidden');
                 headerUI.btnHomeSample.classList.remove('hidden');
+                headerUI.btnTheme.classList.remove('hidden'); 
                 tocSidebar.classList.add('collapsed');
                 
             } else if (newState === 'read') {
                 vRead.classList.remove('hidden');
-                headerUI.btnHamburger.classList.remove('hidden');
                 headerUI.btnBack.classList.remove('hidden');
                 headerUI.headerTitle.classList.remove('hidden');
                 headerUI.headerTitle.innerText = currentFile.title;
@@ -393,6 +357,7 @@
                 } else {
                     headerUI.btnReadCopy.classList.remove('hidden');
                     headerUI.btnReadEdit.classList.remove('hidden');
+                    headerUI.btnTheme.classList.remove('hidden'); 
                 }
                 
                 renderMarkdown(currentFile.content, readerContent);
@@ -405,11 +370,13 @@
                 headerUI.headerTitle.innerText = "编辑: " + currentFile.title;
                 
                 if(isMobile) {
+                    headerUI.btnBack.classList.remove('hidden');
                     headerUI.btnEditMore.classList.remove('hidden');
                 } else {
-                    headerUI.btnEditSave.classList.remove('hidden');
                     headerUI.btnEditCancel.classList.remove('hidden');
                     headerUI.btnEditReset.classList.remove('hidden');
+                    headerUI.btnEditSave.classList.remove('hidden');
+                    headerUI.btnTheme.classList.remove('hidden');
                 }
                 
                 tocSidebar.classList.add('collapsed');
@@ -419,7 +386,22 @@
             }
         }
 
-        // ================= 移动端操作菜单逻辑 =================
+        // ================= 点击标题查看完整文件名逻辑 (New) =================
+        let tooltipTimer;
+        headerUI.headerTitle.onclick = () => {
+            if (!currentFile) return;
+            titleTooltip.innerText = currentFile.title;
+            titleTooltip.classList.add('show');
+            
+            clearTimeout(tooltipTimer);
+            tooltipTimer = setTimeout(() => {
+                titleTooltip.classList.remove('show');
+            }, 3000); // 3秒后自动隐藏
+        };
+        // 点击提示框本身也可以将其隐藏
+        titleTooltip.onclick = () => titleTooltip.classList.remove('show');
+
+        // ================= 手机端悬浮菜单控制 =================
         function showActionMenu(items) {
             actionMenuItems.innerHTML = '';
             items.forEach(item => {
@@ -439,45 +421,49 @@
             actionMenu.classList.remove('show');
             setTimeout(() => { actionMenuOverlay.style.display = 'none'; }, 300);
         }
-
         actionMenuOverlay.onclick = closeActionMenu;
 
-        // ================= 侧边栏/抽屉控制逻辑 =================
+        headerUI.btnReadMore.onclick = () => {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            showActionMenu([
+                { text: '编辑文档', icon: 'fas fa-edit', action: () => switchState('edit') },
+                { text: '复制全文', icon: 'fas fa-copy', action: () => copyContent(null) },
+                { text: isDark ? '切换浅色模式' : '切换深色模式', icon: isDark ? 'fas fa-sun' : 'fas fa-moon', action: () => toggleTheme() },
+                { text: '返回主页', icon: 'fas fa-home', action: () => switchState('home'), danger: true }
+            ]);
+        };
+
+        headerUI.btnEditMore.onclick = () => {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            showActionMenu([
+                { text: '保存修改', icon: 'fas fa-save', action: () => saveEdit(), success: true },
+                { text: '重置内容', icon: 'fas fa-undo', action: () => resetEdit() },
+                { text: isDark ? '切换浅色模式' : '切换深色模式', icon: isDark ? 'fas fa-sun' : 'fas fa-moon', action: () => toggleTheme() },
+                { text: '放弃修改', icon: 'fas fa-times', action: () => cancelEdit(), danger: true }
+            ]);
+        };
+
+        // ================= 全局事件与逻辑 =================
         const openDrawer = () => { overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10); drawer.style.transform = 'translateX(0)'; };
         const closeDrawer = () => { overlay.style.opacity = '0'; drawer.style.transform = 'translateX(-100%)'; setTimeout(() => overlay.style.display = 'none', 300); };
         
         headerUI.btnHamburger.onclick = openDrawer;
         overlay.onclick = closeDrawer;
 
-        headerUI.btnBack.onclick = () => switchState('home');
+        headerUI.btnBack.onclick = () => {
+            if(currentState === 'edit') cancelEdit();
+            else switchState('home');
+        };
         headerUI.headerLogo.onclick = () => switchState('home');
         headerUI.btnReadEdit.onclick = () => switchState('edit');
         
-        // 桌面端复制与保存
         headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
         headerUI.btnEditSave.onclick = saveEdit;
         headerUI.btnEditCancel.onclick = cancelEdit;
         headerUI.btnEditReset.onclick = resetEdit;
 
-        // 移动端菜单绑定
-        headerUI.btnReadMore.onclick = () => {
-            showActionMenu([
-                { text: '编辑文档', icon: 'fas fa-edit', action: () => switchState('edit') },
-                { text: '复制全文', icon: 'fas fa-copy', action: () => copyContent(null) },
-                { text: '返回主页', icon: 'fas fa-home', action: () => switchState('home'), danger: true }
-            ]);
-        };
-
-        headerUI.btnEditMore.onclick = () => {
-            showActionMenu([
-                { text: '保存修改', icon: 'fas fa-save', action: () => saveEdit(), success: true },
-                { text: '重置内容', icon: 'fas fa-undo', action: () => resetEdit() },
-                { text: '取消编辑', icon: 'fas fa-times', action: () => cancelEdit(), danger: true }
-            ]);
-        };
-
         function saveEdit() { currentFile.content = editorTextarea.value; saveToHistory(currentFile); switchState('read'); }
-        function cancelEdit() { if(editorTextarea.value === originalContent || confirm("放弃当前的修改？")) switchState('read'); }
+        function cancelEdit() { if(editorTextarea.value === originalContent || confirm("确定要放弃当前的修改吗？")) switchState('read'); }
         function resetEdit() { if(confirm("恢复到编辑前的状态？")) { editorTextarea.value = originalContent; renderMarkdown(originalContent, editorPreview); } }
         function copyContent(btnRef) { 
             navigator.clipboard.writeText(currentFile.content).then(() => {
@@ -604,9 +590,15 @@
             }
         });
 
-        headerUI.btnTheme.onclick = () => setTheme(document.body.getAttribute('data-theme') === 'light');
+        // 切换主题功能封装
+        function toggleTheme() {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            setTheme(!isDark);
+        }
+        headerUI.btnTheme.onclick = toggleTheme;
+
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档"); if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n`, isPinned: false }; saveToHistory(currentFile); closeDrawer(); switchState('edit'); } };
-        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例', content: '# 欢迎\n体验移动端沉浸式阅读与悬浮菜单。', isPinned: false }; switchState('read'); };
+        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '我的第一篇笔记：这是一段非常非常长的测试标题用来测试手机端的折叠和点击悬浮气泡功能', content: '# 欢迎体验\n完美适配了移动端的排版和菜单操作。', isPinned: false }; switchState('read'); };
 
         window.onresize = () => switchState(currentState);
 
