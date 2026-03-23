@@ -68,7 +68,9 @@
         }
 
         .header-section { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-        .header-center { flex: 2; justify-content: center; text-align: center; min-width: 0; }
+        
+        /* 核心修复：加入 padding: 0 12px; 作为安全距离，防止和左侧“返回”按钮重叠 */
+        .header-center { flex: 2; justify-content: center; text-align: center; min-width: 0; padding: 0 12px; }
         .header-right { justify-content: flex-end; gap: 8px; flex: 1; min-width: 0; }
 
         .icon-btn {
@@ -180,7 +182,7 @@
 
         @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        /* 点击标题后弹出的完整文件名提示框 (New) */
+        /* 点击标题后弹出的完整文件名提示框 */
         .title-tooltip {
             position: fixed; top: calc(var(--header-height) + env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%);
             background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
@@ -386,19 +388,28 @@
             }
         }
 
-        // ================= 点击标题查看完整文件名逻辑 (New) =================
+        // ================= 点击标题查看完整文件名逻辑 (重构 Toggle 开关) =================
         let tooltipTimer;
         headerUI.headerTitle.onclick = () => {
             if (!currentFile) return;
+            
+            // 核心修复：如果气泡已经是显示状态，则点击标题会将其收起
+            if (titleTooltip.classList.contains('show')) {
+                titleTooltip.classList.remove('show');
+                clearTimeout(tooltipTimer);
+                return;
+            }
+            
+            // 否则展示气泡
             titleTooltip.innerText = currentFile.title;
             titleTooltip.classList.add('show');
             
             clearTimeout(tooltipTimer);
             tooltipTimer = setTimeout(() => {
                 titleTooltip.classList.remove('show');
-            }, 3000); // 3秒后自动隐藏
+            }, 3000); 
         };
-        // 点击提示框本身也可以将其隐藏
+        // 点击气泡本身也可以将其隐藏
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
 
         // ================= 手机端悬浮菜单控制 =================
@@ -598,7 +609,7 @@
         headerUI.btnTheme.onclick = toggleTheme;
 
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档"); if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n`, isPinned: false }; saveToHistory(currentFile); closeDrawer(); switchState('edit'); } };
-        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '我的第一篇笔记：这是一段非常非常长的测试标题用来测试手机端的折叠和点击悬浮气泡功能', content: '# 欢迎体验\n完美适配了移动端的排版和菜单操作。', isPinned: false }; switchState('read'); };
+        headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：如何使用 Markdown', content: '# 欢迎体验\n完美适配了移动端的排版和菜单操作。', isPinned: false }; switchState('read'); };
 
         window.onresize = () => switchState(currentState);
 
