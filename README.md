@@ -18,7 +18,12 @@
 ---
 
 ## 🖼️ 项目预览
-（后续可直接拖拽上传项目截图，替换本行即可）
+<img width="1280" height="651" alt="PixPin_2026-04-01_08-22-00" src="https://github.com/user-attachments/assets/1c933dad-0f30-4155-b5b5-4a484d263ea6" />
+<img width="1280" height="654" alt="PixPin_2026-04-01_08-22-21" src="https://github.com/user-attachments/assets/db91c3b2-e7bd-48b1-a042-fc1bec577ce9" />
+<img width="1280" height="651" alt="PixPin_2026-04-01_08-22-40" src="https://github.com/user-attachments/assets/c53da28c-698e-4aae-b84b-b99a6f926d69" />
+<img width="1280" height="653" alt="PixPin_2026-04-01_08-23-00" src="https://github.com/user-attachments/assets/78f38eeb-83b8-4d99-9b1a-ec567812f70e" />
+<img width="1280" height="652" alt="PixPin_2026-04-01_08-23-22" src="https://github.com/user-attachments/assets/ddd32cb5-9c5d-4ccc-b39e-8627e76324a4" />
+
 
 ---
 
