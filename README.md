@@ -1,16 +1,16 @@
 # Markdown Live Editor ⚡️
 > 开箱即用的 Markdown 实时预览编辑器，无广告、无追踪，支持本地存储、一键导出，让你的 Markdown 写作更高效。
 
-[![GitHub stars](https://img.shields.io/github/stars/fjkkx77/markdown-live-editor?style=social)](https://github.com/fjkkx77/markdown-live-editor/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/fjkkx77/markdown-live-editor?style=social)](https://github.com/fjkkx77/markdown-live-editor/network/members)
-[![在线Demo](https://img.shields.io/badge/在线Demo-点击访问-brightgreen)](https://fjkkx77.github.io/markdown-live-editor/)
+[![GitHub stars](https://img.shields.io/github/stars/fjkkx77/markdown-reader?style=social)](https://github.com/fjkkx77/markdown-reader/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/fjkkx77/markdown-reader?style=social)](https://github.com/fjkkx77/markdown-reader/network/members)
+[![在线Demo](https://img.shields.io/badge/在线Demo-点击访问-brightgreen)](https://fjkkx77.github.io/markdown-reader/)
 
 ---
 
 ## ✨ 核心功能亮点
 - 🚀 **实时双向预览**：左侧编辑，右侧实时渲染，所见即所得
 - 💾 **本地自动存储**：内容自动保存到浏览器本地存储，刷新页面不丢失
-- 📤 **一键导出**：支持一键导出为 .md格式
+- 📤 **一键导出**：支持导出为 .md格式
 - 🎨 **简洁无干扰**：无广告、无用户追踪，专注写作体验
 - 🔧 **常用语法快捷按钮**：标题、加粗、链接、代码块等一键插入，新手也能快速上手
 - 📱 **全终端响应式**：电脑、平板、手机都能完美适配
@@ -18,13 +18,13 @@
 ---
 
 ## 🖼️ 项目预览
-（后续可补充项目截图）
+（后续可直接拖拽上传项目截图，替换本行即可）
 
 ---
 
 ## 🚀 快速开始
 ### 方式一：直接在线使用（推荐）
-点击 [在线Demo](https://fjkkx77.github.io/markdown-live-editor/) 即可直接使用，无需任何安装配置。
+点击 [在线Demo](https://fjkkx77.github.io/markdown-reader/) 即可直接使用，无需任何安装配置。
 
 ### 方式二：一键部署到自己的 GitHub Pages
 1.  点击页面右上角的 **Fork** 按钮，把本仓库复刻到你自己的GitHub账号下
@@ -43,6 +43,7 @@
 - 原生 HTML5 + CSS3 + JavaScript
 - Markdown 渲染：[Marked.js](https://marked.js.org/)
 - 代码高亮：[Highlight.js](https://highlightjs.org/)
+- PDF 导出：[html2pdf.js](https://ekoopmans.github.io/html2pdf.js/)
 
 ---
 
@@ -58,7 +59,7 @@
 
 ## 🤝 贡献指南
 欢迎提交 Issue 和 Pull Request！
-- 发现 Bug 或有功能建议，欢迎提交 [Issue](https://github.com/fjkkx77/markdown-live-editor/issues)
+- 发现 Bug 或有功能建议，欢迎提交 [Issue](https://github.com/fjkkx77/markdown-reader/issues)
 - 想贡献代码，Fork 仓库后提交 PR 即可
 
 ---
