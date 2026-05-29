@@ -21,7 +21,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
         :root {
-            --apple-blue: #007AFF; 
+            --apple-blue: #007AFF;
             --apple-green: #34C759;
             --apple-red: #FF3B30;
             --apple-gray: #8E8E93;
@@ -36,7 +36,7 @@
         }
         
         [data-theme="dark"] {
-            --apple-blue: #0A84FF; 
+            --apple-blue: #0A84FF;
             --apple-green: #30D158;
             --apple-red: #FF453A;
             --bg-base: #000000;
@@ -58,10 +58,12 @@
 
         /* ================= 2. 动态顶栏 ================= */
         header {
-            flex-shrink: 0; height: calc(var(--header-height) + env(safe-area-inset-top));
+            flex-shrink: 0;
+            height: calc(var(--header-height) + env(safe-area-inset-top));
             padding-top: env(safe-area-inset-top); background: var(--header-bg);
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid var(--border-color); display: flex; align-items: center;
+            justify-content: space-between;
             padding: 0 16px; z-index: 100;
         }
 
@@ -192,6 +194,7 @@
             <button class="text-btn danger hidden" id="btn-edit-cancel">取消</button>
             <div class="logo-text" id="header-logo"><i class="fab fa-markdown"></i> MD Reader</div>
         </div>
+  
         <div class="header-section header-center">
             <div class="file-title-display hidden" id="header-title" title="点击查看完整名称"></div>
         </div>
@@ -199,6 +202,7 @@
             <button class="icon-btn hidden" id="btn-read-more" title="更多操作"><i class="fas fa-ellipsis-h"></i></button>
             <button class="icon-btn hidden" id="btn-edit-more" title="编辑选项"><i class="fas fa-ellipsis-h"></i></button>
             <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
+    
             <button class="text-btn primary hidden" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
             <button class="text-btn hidden" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             <button class="text-btn hidden" id="btn-edit-reset">重置</button>
@@ -208,6 +212,7 @@
     </header>
 
     <div class="app-container">
+  
         <div class="toc-sidebar collapsed" id="toc-sidebar">
             <div class="toc-title">目录 Contents</div>
             <div id="toc-content"></div>
@@ -216,22 +221,26 @@
         <div class="main-content">
             <div class="view-layer view-home" id="view-home">
                 <div class="upload-card">
+               
                     <i class="fas fa-file-alt upload-icon"></i>
                     <div class="upload-title">轻量级 Markdown 阅读器</div>
                     <label class="btn-upload-lg">
                         <i class="fas fa-upload"></i> 打开 MD 文件
+                   
                         <input type="file" id="file-upload-home" hidden>
                     </label>
                 </div>
             </div>
             <div class="view-layer view-read hidden" id="view-read">
                 <div class="markdown-container">
+           
                     <div class="markdown-body" id="reader-content"></div>
                 </div>
             </div>
             <div class="view-layer view-edit hidden" id="view-edit">
                 <div class="edit-pane">
                     <textarea id="editor-textarea" placeholder="在此输入 Markdown..."></textarea>
+     
                 </div>
                 <div class="preview-pane">
                     <div class="markdown-body" id="editor-preview"></div>
@@ -255,6 +264,7 @@
             <div class="menu-action" id="menu-new" style="color: var(--apple-green);"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
             <label class="menu-action">
                 <i class="fas fa-file-upload"></i> 导入本地文件
+                
                 <input type="file" id="file-upload-drawer" hidden>
             </label>
             <div id="history-list" style="margin-top: 10px;"></div>
@@ -277,12 +287,12 @@
                 langPrefix: 'hljs language-',
                 highlight(code, lang) {
                     const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+  
                     return hljs.highlight(code, { language }).value;
                 }
             }),
             markedKatex({ throwOnError: false, output: 'html' })
         );
-
         // ================= 核心状态与数据管理 =================
         let currentState = 'home';
         let currentFile = null;
@@ -295,7 +305,6 @@
             folders: [{ id: 'root', name: '默认文件夹', isOpen: true }],
             files: []
         };
-
         function getDB() {
             let rawStr = localStorage.getItem('md-pro-db');
             if (!rawStr) return JSON.parse(JSON.stringify(defaultDB));
@@ -329,20 +338,21 @@
             btnReadCopy: document.getElementById('btn-read-copy'), btnReadEdit: document.getElementById('btn-read-edit'),
             btnReadMore: document.getElementById('btn-read-more'), btnEditSave: document.getElementById('btn-edit-save'),
             btnEditCancel: document.getElementById('btn-edit-cancel'), btnEditReset: document.getElementById('btn-edit-reset'),
-            btnEditMore: document.getElementById('btn-edit-more'), headerLogo: document.getElementById('header-logo'),
+            btnEditMore: document.getElementById('btn-edit-more'), 
+            headerLogo: document.getElementById('header-logo'),
             headerTitle: document.getElementById('header-title')
         };
-
         const overlay = document.getElementById('overlay'); const drawer = document.getElementById('drawer');
         const actionMenu = document.getElementById('action-menu'); const actionMenuItems = document.getElementById('action-menu-items');
-        const actionMenuOverlay = document.getElementById('action-menu-overlay'); const titleTooltip = document.getElementById('title-tooltip');
+        const actionMenuOverlay = document.getElementById('action-menu-overlay');
+        const titleTooltip = document.getElementById('title-tooltip');
         
         const tocSidebar = document.getElementById('toc-sidebar'); const tocContent = document.getElementById('toc-content');
         const btnFabToc = document.getElementById('btn-fab-toc'); const tocOverlay = document.getElementById('toc-overlay');
         const readerContent = document.getElementById('reader-content'); const editorTextarea = document.getElementById('editor-textarea');
         const editorPreview = document.getElementById('editor-preview');
         const btnSort = document.getElementById('btn-sort');
-
+        
         // ================= UI 状态机控制 =================
         function switchState(newState) {
             currentState = newState;
@@ -351,33 +361,41 @@
             vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
             btnFabToc.classList.add('hidden'); 
             Object.values(headerUI).forEach(el => { if(el && el.id !== 'btn-hamburger') el.classList.add('hidden'); });
-
             if (newState === 'home') {
-                vHome.classList.remove('hidden'); headerUI.headerLogo.classList.remove('hidden');
+                vHome.classList.remove('hidden');
+                headerUI.headerLogo.classList.remove('hidden');
                 headerUI.btnHomeSample.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
                 tocSidebar.classList.add('collapsed');
                 
             } else if (newState === 'read') {
-                vRead.classList.remove('hidden'); headerUI.btnBack.classList.remove('hidden');
+                vRead.classList.remove('hidden');
+                headerUI.btnBack.classList.remove('hidden');
                 headerUI.headerTitle.classList.remove('hidden'); headerUI.headerTitle.innerText = currentFile.title;
                 
                 if(isMobile) {
-                    headerUI.btnReadMore.classList.remove('hidden'); btnFabToc.classList.remove('hidden'); 
+                    headerUI.btnReadMore.classList.remove('hidden');
+                    btnFabToc.classList.remove('hidden'); 
                 } else {
-                    headerUI.btnReadCopy.classList.remove('hidden'); headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
+                    headerUI.btnReadCopy.classList.remove('hidden');
+                    headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
                 }
-                renderMarkdown(currentFile.content, readerContent); generateTOC();
+                renderMarkdown(currentFile.content, readerContent);
+                generateTOC();
                 if (!isMobile) tocSidebar.classList.remove('collapsed');
                 
             } else if (newState === 'edit') {
-                vEdit.classList.remove('hidden'); headerUI.headerTitle.classList.remove('hidden'); headerUI.headerTitle.innerText = "编辑: " + currentFile.title;
+                vEdit.classList.remove('hidden');
+                headerUI.headerTitle.classList.remove('hidden'); headerUI.headerTitle.innerText = "编辑: " + currentFile.title;
                 if(isMobile) {
-                    headerUI.btnBack.classList.remove('hidden'); headerUI.btnEditMore.classList.remove('hidden');
+                    headerUI.btnBack.classList.remove('hidden');
+                    headerUI.btnEditMore.classList.remove('hidden');
                 } else {
-                    headerUI.btnEditCancel.classList.remove('hidden'); headerUI.btnEditReset.classList.remove('hidden');
+                    headerUI.btnEditCancel.classList.remove('hidden');
+                    headerUI.btnEditReset.classList.remove('hidden');
                     headerUI.btnEditSave.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
                 }
-                tocSidebar.classList.add('collapsed'); originalContent = currentFile.content;
+                tocSidebar.classList.add('collapsed');
+                originalContent = currentFile.content;
                 editorTextarea.value = currentFile.content; renderMarkdown(currentFile.content, editorPreview);
             }
         }
@@ -400,11 +418,12 @@
         }
 
         function closeActionMenu() {
-            actionMenuOverlay.style.opacity = '0'; actionMenu.classList.remove('show');
+            actionMenuOverlay.style.opacity = '0';
+            actionMenu.classList.remove('show');
             setTimeout(() => { actionMenuOverlay.style.display = 'none'; }, 300);
         }
         actionMenuOverlay.onclick = closeActionMenu;
-
+        
         // ================= 侧边栏文件系统 (文件夹渲染核心逻辑) =================
         
         // 初始化排序图标
@@ -417,7 +436,6 @@
             btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
             renderDrawer();
         };
-
         function renderDrawer() {
             let db = getDB();
             const list = document.getElementById('history-list');
@@ -448,7 +466,6 @@
                     let newName = prompt("重命名文件夹：", folder.name);
                     if (newName && newName.trim() !== '') { folder.name = newName.trim(); saveDB(db); }
                 };
-
                 if (folder.id !== 'root') {
                     header.querySelector('.del-folder-btn').onclick = (e) => {
                         e.stopPropagation();
@@ -468,7 +485,6 @@
                 filesContainer.className = 'folder-files';
                 
                 let folderFiles = db.files.filter(f => f.folderId === folder.id);
-                
                 // === 核心排序逻辑 ===
                 folderFiles.sort((a, b) => {
                     if (a.isPinned && !b.isPinned) return -1;
@@ -476,7 +492,6 @@
                     // 根据 sortOrder 状态决定按最新在前(desc)还是最旧在前(asc)
                     return sortOrder === 'desc' ? b.timestamp - a.timestamp : a.timestamp - b.timestamp;
                 });
-
                 if (folderFiles.length === 0) {
                     filesContainer.innerHTML = `<div style="padding: 10px 16px 10px 36px; font-size:12px; color:var(--text-secondary);">空文件夹</div>`;
                 }
@@ -516,7 +531,8 @@
                             }},
                             { text: '删除文档', icon: 'fas fa-trash-alt', danger: true, action: () => {
                                 if(confirm(`确定删除文档 "${file.title}" 吗？`)) {
-                                    db.files = db.files.filter(f => f.id !== file.id); saveDB(db);
+                                    db.files = db.files.filter(f => f.id !== file.id);
+                                    saveDB(db);
                                     if(currentFile && currentFile.id === file.id) { switchState('home'); if(window.innerWidth < 768) closeDrawer(); }
                                 }
                             }}
@@ -538,16 +554,15 @@
                 saveDB(db);
             }
         };
-
         let tooltipTimer;
         headerUI.headerTitle.onclick = () => {
             if (!currentFile) return;
             if (titleTooltip.classList.contains('show')) { titleTooltip.classList.remove('show'); clearTimeout(tooltipTimer); return; }
-            titleTooltip.innerText = currentFile.title; titleTooltip.classList.add('show');
+            titleTooltip.innerText = currentFile.title;
+            titleTooltip.classList.add('show');
             clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { titleTooltip.classList.remove('show'); }, 3000); 
         };
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
-
         headerUI.btnReadMore.onclick = () => {
             const isDark = document.body.getAttribute('data-theme') === 'dark';
             showActionMenu([
@@ -574,13 +589,12 @@
         
         btnFabToc.onclick = () => { tocOverlay.style.display = 'block'; setTimeout(() => tocOverlay.style.opacity = '1', 10); tocSidebar.classList.add('mobile-open'); };
         tocOverlay.onclick = () => { tocOverlay.style.opacity = '0'; tocSidebar.classList.remove('mobile-open'); setTimeout(() => tocOverlay.style.display = 'none', 300); };
-
         headerUI.btnBack.onclick = () => { if(currentState === 'edit') cancelEdit(); else switchState('home'); };
         headerUI.headerLogo.onclick = () => switchState('home');
         headerUI.btnReadEdit.onclick = () => switchState('edit');
         headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
         headerUI.btnEditSave.onclick = saveEdit; headerUI.btnEditCancel.onclick = cancelEdit; headerUI.btnEditReset.onclick = resetEdit;
-
+        
         function saveToCurrentFolder(fileParams) {
             let db = getDB();
             let newFile = { ...fileParams, timestamp: Date.now(), isPinned: false, folderId: 'root' };
@@ -595,17 +609,43 @@
         function resetEdit() { if(confirm("恢复到未修改前？")) { editorTextarea.value = originalContent; renderMarkdown(originalContent, editorPreview); } }
         function copyContent(btnRef) { navigator.clipboard.writeText(currentFile.content).then(() => { if(btnRef) { btnRef.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => btnRef.innerHTML = '<i class="fas fa-copy"></i>', 2000); } else alert("✅ 复制成功"); }); }
 
-        function handleFile(e) {
-            const file = e.target.files[0]; if (!file) return;
-            const title = file.name.replace(/\.[^/.]+$/, ""); const reader = new FileReader();
-            reader.onload = ev => { currentFile = { id: Date.now().toString(), title, content: ev.target.result }; saveToCurrentFolder(currentFile); switchState('read'); closeDrawer(); e.target.value = ''; };
+        // ================= 重构：将文件处理逻辑提炼为公共函数 =================
+        function processFileObj(file) {
+            if (!file) return;
+            const title = file.name.replace(/\.[^/.]+$/, ""); 
+            const reader = new FileReader();
+            reader.onload = ev => { 
+                currentFile = { id: Date.now().toString(), title, content: ev.target.result }; 
+                saveToCurrentFolder(currentFile); 
+                switchState('read'); 
+                closeDrawer(); 
+            };
             reader.readAsText(file);
+        }
+
+        // 原有的 input onchange 触发
+        function handleFile(e) {
+            processFileObj(e.target.files[0]);
+            if (e.target) e.target.value = '';
         }
         document.getElementById('file-upload-home').onchange = handleFile;
         document.getElementById('file-upload-drawer').onchange = handleFile;
 
+        // ================= 新增：全局拖拽文件监听逻辑 =================
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault(); // 必须阻止默认行为，否则鼠标会显示“禁止拖拽”图标
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault(); // 必须阻止默认行为，否则浏览器会直接离开当前页面去打开文件
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                processFileObj(e.dataTransfer.files[0]);
+            }
+        });
+
+        // ================= Markdown 渲染及其他逻辑 =================
         function renderMarkdown(text, target) { 
-            target.innerHTML = marked.parse(text); 
+            target.innerHTML = marked.parse(text);
             target.querySelectorAll('h1, h2, h3, h4').forEach((heading, i) => heading.id = `heading-${i}`); 
             target.querySelectorAll('pre code').forEach((block) => {
                 if (block.parentNode.querySelector('.copy-code-btn')) return; 
@@ -625,17 +665,21 @@
                 tocContent.appendChild(link);
             });
         }
+        
         editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
-
-        document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档"); if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
+        
+        document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档");
+        if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
+        
         headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：文件排序功能', content: '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！' }; saveToCurrentFolder(currentFile); switchState('read'); };
-
+        
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
         window.onresize = () => switchState(currentState);
 
         function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`; document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
-        const savedTheme = localStorage.getItem('md-theme'); setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
+        const savedTheme = localStorage.getItem('md-theme');
+        setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
         
         renderDrawer(); switchState('home');
     </script>
