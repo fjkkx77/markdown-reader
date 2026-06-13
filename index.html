@@ -98,7 +98,8 @@
         .markdown-body { background: transparent !important; color: inherit !important; font-family: inherit !important; }
 
         .markdown-body pre { position: relative; }
-        .copy-code-btn { position: absolute; top: 8px; right: 8px; background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; }
+        .markdown-body .code-block-wrapper { position: relative; }
+        .copy-code-btn { position: absolute; top: 8px; right: 8px; background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; z-index: 2; }
         .copy-code-btn:hover { opacity: 1; }
 
         .markdown-body .mermaid-wrapper { position: relative; }
@@ -790,13 +791,18 @@
                 heading.id = slugify(heading.textContent, usedSlugs);
             });
 
-            // 代码块复制按钮
+            // 代码块复制按钮：用外层 wrapper 承载按钮，避免 pre 横向滚动时按钮跟着移动
             target.querySelectorAll('pre code').forEach((block) => {
-                if (block.parentNode.querySelector('.copy-code-btn')) return;
-                const pre = block.parentNode; const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+                const pre = block.parentNode;
+                if (pre.parentNode.classList.contains('code-block-wrapper')) return;
+                const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
                 copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); });
                 };
-                pre.appendChild(copyBtn);
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block-wrapper';
+                pre.parentNode.insertBefore(wrapper, pre);
+                wrapper.appendChild(pre);
+                wrapper.appendChild(copyBtn);
             });
 
             // Mermaid 图表：将 ```mermaid 代码块转换为图表，复制按钮一并迁移到图表容器上
@@ -804,15 +810,16 @@
             if (mermaidBlocks.length > 0) {
                 mermaidBlocks.forEach((block) => {
                     const pre = block.parentNode;
+                    const codeWrapper = pre.parentNode;
                     const wrapper = document.createElement('div');
                     wrapper.className = 'mermaid-wrapper';
                     const graph = document.createElement('div');
                     graph.className = 'mermaid';
                     graph.textContent = block.textContent;
                     wrapper.appendChild(graph);
-                    const copyBtn = pre.querySelector('.copy-code-btn');
+                    const copyBtn = codeWrapper.querySelector('.copy-code-btn');
                     if (copyBtn) wrapper.appendChild(copyBtn);
-                    pre.replaceWith(wrapper);
+                    codeWrapper.replaceWith(wrapper);
                 });
                 mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
                 await mermaid.run({ nodes: target.querySelectorAll('.mermaid') });
