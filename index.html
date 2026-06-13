@@ -10,7 +10,9 @@
     <script src="https://cdn.jsdelivr.net/npm/marked-highlight/lib/index.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-katex-extension/lib/index.umd.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.10/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <link id="hljs-style" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
@@ -98,6 +100,10 @@
         .markdown-body pre { position: relative; }
         .copy-code-btn { position: absolute; top: 8px; right: 8px; background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; }
         .copy-code-btn:hover { opacity: 1; }
+
+        .markdown-body .mermaid-wrapper { position: relative; }
+        .markdown-body .mermaid { overflow-x: auto; padding: 8px 0; }
+        .markdown-body .mermaid svg { max-width: 100%; }
 
         .view-edit { display: flex; flex-direction: column; overflow: hidden; }
         .edit-pane, .preview-pane { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
@@ -278,8 +284,70 @@
                     return hljs.highlight(code, { language }).value;
                 }
             }),
-            markedKatex({ throwOnError: false, output: 'html' })
+            markedKatex({ throwOnError: false, output: 'html' }),
+            // 安全加固：对 marked 输出的最终 HTML 做 XSS 过滤，防止 .md 文件中夹带的 <script>/onerror 等被执行
+            { hooks: { postprocess: (html) => DOMPurify.sanitize(html, { ADD_ATTR: ['style'] }) } }
         );
+
+        // Mermaid 图表渲染器（用于 ```mermaid 代码块）
+        mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
+
+        // ================= highlight.js 按需语言加载 =================
+        // CDN 默认的 highlight.min.js 只内置约35种常用语言，遇到代码块标注的语言未被识别时，
+        // 自动从官方 CDN 按需加载对应语言包，从而覆盖 highlight.js 支持的全部190+种语言
+        const HLJS_VERSION = '11.9.0';
+        // 部分语言标识与 highlight.js 语言文件名不一致，需要做别名映射后再加载
+        const HLJS_LANG_ALIAS = {
+            sh: 'bash', zsh: 'bash', ps1: 'powershell', pwsh: 'powershell',
+            'c++': 'cpp', cs: 'csharp', kt: 'kotlin', rs: 'rust', tex: 'latex',
+            vb: 'vbnet', asm: 'x86asm', proto: 'protobuf', objc: 'objectivec'
+        };
+        // 这些语言标识不对应 highlight.js 的语言文件，跳过远程加载
+        const HLJS_SKIP_LANGS = new Set(['plaintext', 'text', 'mermaid']);
+        const hljsLoadAttempted = new Set();
+
+        function loadHljsLanguage(file) {
+            if (hljs.getLanguage(file) || hljsLoadAttempted.has(file)) return Promise.resolve();
+            hljsLoadAttempted.add(file);
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/${HLJS_VERSION}/languages/${file}.min.js`;
+                script.onload = resolve;
+                script.onerror = resolve; // highlight.js 未收录该语言，渲染时回退为 plaintext
+                document.head.appendChild(script);
+            });
+        }
+
+        function ensureCodeLanguagesLoaded(markdown) {
+            const files = new Set();
+            const fenceRe = /^[ \t]*```[ \t]*([A-Za-z0-9_+-]+)/gm;
+            let m;
+            while ((m = fenceRe.exec(markdown))) {
+                const lang = m[1].toLowerCase();
+                if (HLJS_SKIP_LANGS.has(lang) || hljs.getLanguage(lang)) continue;
+                files.add(HLJS_LANG_ALIAS[lang] || lang);
+            }
+            return Promise.all([...files].map(loadHljsLanguage));
+        }
+
+        // ================= Markdown 预处理与标题锚点 =================
+        // 去除文档开头的 YAML Front Matter（---...---），避免被 marked 误解析为分隔线+标题
+        function stripFrontMatter(text) {
+            const match = text.match(/^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)\r?\n?/);
+            return match ? text.slice(match[0].length) : text;
+        }
+
+        // 生成 GitHub 风格的标题锚点 slug，使文档内 [文字](#标题) 形式的跳转链接可用
+        function slugify(text, usedSlugs) {
+            let slug = String(text).trim().toLowerCase()
+                .replace(/[!"#%&'()*+,./:;<=>?@[\]^`{|}~]/g, '')
+                .replace(/\s+/g, '-');
+            if (!slug) slug = 'section';
+            let unique = slug, i = 1;
+            while (usedSlugs.has(unique)) unique = `${slug}-${i++}`;
+            usedSlugs.add(unique);
+            return unique;
+        }
 
         // ================= 核心状态与数据管理 =================
         let currentState = 'home';
@@ -343,7 +411,7 @@
         const btnSort = document.getElementById('btn-sort');
 
         // ================= UI 状态机控制 =================
-        function switchState(newState) {
+        async function switchState(newState) {
             currentState = newState;
             const isMobile = window.innerWidth < 768; 
             
@@ -368,7 +436,7 @@
                     headerUI.btnReadCopy.classList.remove('hidden');
                     headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
                 }
-                renderMarkdown(currentFile.content, readerContent);
+                await renderMarkdown(currentFile.content, readerContent);
                 generateTOC();
                 if (!isMobile) tocSidebar.classList.remove('collapsed');
                 
@@ -385,7 +453,7 @@
                 }
                 tocSidebar.classList.add('collapsed');
                 originalContent = currentFile.content;
-                editorTextarea.value = currentFile.content; renderMarkdown(currentFile.content, editorPreview);
+                editorTextarea.value = currentFile.content; await renderMarkdown(currentFile.content, editorPreview);
             }
         }
 
@@ -711,16 +779,44 @@
         });
 
         // ================= Markdown 渲染及其他逻辑 =================
-        function renderMarkdown(text, target) { 
-            target.innerHTML = marked.parse(text);
-            target.querySelectorAll('h1, h2, h3, h4').forEach((heading, i) => heading.id = `heading-${i}`); 
+        async function renderMarkdown(text, target) {
+            const body = stripFrontMatter(text);
+            await ensureCodeLanguagesLoaded(body);
+            target.innerHTML = marked.parse(body);
+
+            // 标题锚点：使用 GitHub 风格 slug，支持文档内 [文字](#标题) 跳转
+            const usedSlugs = new Set();
+            target.querySelectorAll('h1, h2, h3, h4').forEach((heading) => {
+                heading.id = slugify(heading.textContent, usedSlugs);
+            });
+
+            // 代码块复制按钮
             target.querySelectorAll('pre code').forEach((block) => {
-                if (block.parentNode.querySelector('.copy-code-btn')) return; 
+                if (block.parentNode.querySelector('.copy-code-btn')) return;
                 const pre = block.parentNode; const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
-                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); }); 
+                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); });
                 };
                 pre.appendChild(copyBtn);
             });
+
+            // Mermaid 图表：将 ```mermaid 代码块转换为图表，复制按钮一并迁移到图表容器上
+            const mermaidBlocks = target.querySelectorAll('pre code.language-mermaid');
+            if (mermaidBlocks.length > 0) {
+                mermaidBlocks.forEach((block) => {
+                    const pre = block.parentNode;
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'mermaid-wrapper';
+                    const graph = document.createElement('div');
+                    graph.className = 'mermaid';
+                    graph.textContent = block.textContent;
+                    wrapper.appendChild(graph);
+                    const copyBtn = pre.querySelector('.copy-code-btn');
+                    if (copyBtn) wrapper.appendChild(copyBtn);
+                    pre.replaceWith(wrapper);
+                });
+                mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
+                await mermaid.run({ nodes: target.querySelectorAll('.mermaid') });
+            }
         }
         
         function generateTOC() {
