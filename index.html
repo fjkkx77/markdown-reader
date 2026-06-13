@@ -21,31 +21,16 @@
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
         :root {
-            --apple-blue: #007AFF;
-            --apple-green: #34C759;
-            --apple-red: #FF3B30;
-            --apple-gray: #8E8E93;
-            --bg-base: #F2F2F7;
-            --bg-surface: #FFFFFF;
-            --text-main: #000000;
-            --text-secondary: #6C6C70;
-            --border-color: #E5E5EA;
-            --header-bg: rgba(255, 255, 255, 0.85);
-            --sidebar-bg: #F8F8F8;
+            --apple-blue: #007AFF; --apple-green: #34C759; --apple-red: #FF3B30; --apple-gray: #8E8E93;
+            --bg-base: #F2F2F7; --bg-surface: #FFFFFF; --text-main: #000000; --text-secondary: #6C6C70;
+            --border-color: #E5E5EA; --header-bg: rgba(255, 255, 255, 0.85); --sidebar-bg: #F8F8F8;
             --header-height: 55px;
         }
         
         [data-theme="dark"] {
-            --apple-blue: #0A84FF;
-            --apple-green: #30D158;
-            --apple-red: #FF453A;
-            --bg-base: #000000;
-            --bg-surface: #1C1C1E;
-            --text-main: #FFFFFF;
-            --text-secondary: #EBEBF5;
-            --border-color: #38383A;
-            --header-bg: rgba(28, 28, 30, 0.85);
-            --sidebar-bg: #151515;
+            --apple-blue: #0A84FF; --apple-green: #30D158; --apple-red: #FF453A;
+            --bg-base: #000000; --bg-surface: #1C1C1E; --text-main: #FFFFFF; --text-secondary: #EBEBF5;
+            --border-color: #38383A; --header-bg: rgba(28, 28, 30, 0.85); --sidebar-bg: #151515;
         }
         
         html, body { height: 100%; width: 100%; overflow: hidden; }
@@ -58,13 +43,11 @@
 
         /* ================= 2. 动态顶栏 ================= */
         header {
-            flex-shrink: 0;
-            height: calc(var(--header-height) + env(safe-area-inset-top));
+            flex-shrink: 0; height: calc(var(--header-height) + env(safe-area-inset-top));
             padding-top: env(safe-area-inset-top); background: var(--header-bg);
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border-color); display: flex; align-items: center;
-            justify-content: space-between;
-            padding: 0 16px; z-index: 100;
+            justify-content: space-between; padding: 0 16px; z-index: 100;
         }
 
         .header-section { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
@@ -129,7 +112,7 @@
             .desktop-only { display: none !important; } 
         }
 
-        /* ================= 5. 左侧历史/文件夹抽屉 (重构) ================= */
+        /* ================= 5. 左侧历史/文件夹抽屉 ================= */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; opacity: 0; transition: opacity 0.3s; }
         .drawer { position: fixed; top: 0; left: 0; height: 100vh; width: 280px; background: var(--bg-surface); z-index: 201; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); display: flex; flex-direction: column; }
         .drawer-header { padding: 20px; border-bottom: 1px solid var(--border-color); margin-top: env(safe-area-inset-top); font-weight: 600; font-size: 1.2rem; display: flex; justify-content: space-between; align-items: center; }
@@ -138,14 +121,17 @@
         .menu-action { padding: 12px 20px; display: flex; align-items: center; gap: 12px; color: var(--apple-blue); font-weight: 500; cursor: pointer; border-bottom: 1px solid var(--border-color); }
         .menu-action:active { background: rgba(128,128,128,0.1); }
         
-        /* 文件夹样式 */
-        .folder-group { border-bottom: 1px solid var(--border-color); }
+        /* 文件夹及拖拽样式 */
+        .folder-group { border-bottom: 1px solid var(--border-color); transition: border 0.2s; }
+        .folder-group.dragging { opacity: 0.4; background: var(--bg-base); }
+        .folder-group.drag-over { border-top: 2px solid var(--apple-blue); }
+        
         .folder-header { padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; background: var(--bg-base); cursor: pointer; user-select: none; }
         .folder-header:active { background: var(--border-color); }
         .folder-info { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--text-main); }
         .folder-icon { color: var(--apple-gray); width: 16px; text-align: center; }
         .folder-actions { display: flex; gap: 10px; color: var(--text-secondary); }
-        .folder-btn { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 4px; }
+        .folder-btn { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 4px; transition: color 0.2s; }
         .folder-btn:active { color: var(--apple-blue); }
         
         .folder-files { display: none; background: var(--bg-surface); }
@@ -162,7 +148,7 @@
         .history-more-btn { background: none; border: none; color: var(--text-secondary); padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 16px; }
         .history-more-btn:active, .history-more-btn.active { background: rgba(128,128,128,0.15); color: var(--text-main); }
         
-        /* 移动端 iOS 风格悬浮菜单 (Action Sheet) */
+        /* 悬浮菜单 & Tooltip */
         .mobile-action-menu { position: fixed; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; right: 10px; background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.12); z-index: 300; display: none; flex-direction: column; padding: 8px 0; max-height: 80vh; overflow-y: auto; }
         .mobile-action-menu.show { display: flex; animation: slideInUp 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
         .action-item { padding: 16px 20px; display: flex; align-items: center; gap: 15px; cursor: pointer; color: var(--apple-blue); font-weight: 500; font-size: 17px; border-bottom: 1px solid rgba(128,128,128,0.1); }
@@ -175,11 +161,9 @@
         .action-item i { width: 20px; text-align: center; }
         @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        /* 完整文件名悬浮气泡 */
         .title-tooltip { position: fixed; top: calc(var(--header-height) + env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%); background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); color: var(--text-main); padding: 10px 18px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color); z-index: 1000; max-width: 90vw; word-break: break-all; font-weight: 500; font-size: 14px; text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
         .title-tooltip.show { opacity: 1; pointer-events: auto; }
 
-        /* 悬浮目录按钮 (FAB) */
         .fab-toc { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); right: 20px; width: 50px; height: 50px; border-radius: 25px; background: var(--apple-blue); color: white; border: none; box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4); font-size: 20px; z-index: 150; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s, opacity 0.2s, background 0.2s; }
         .fab-toc:active { transform: scale(0.9); background: #005ecb; }
 
@@ -202,7 +186,7 @@
             <button class="icon-btn hidden" id="btn-read-more" title="更多操作"><i class="fas fa-ellipsis-h"></i></button>
             <button class="icon-btn hidden" id="btn-edit-more" title="编辑选项"><i class="fas fa-ellipsis-h"></i></button>
             <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
-    
+  
             <button class="text-btn primary hidden" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
             <button class="text-btn hidden" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             <button class="text-btn hidden" id="btn-edit-reset">重置</button>
@@ -221,7 +205,7 @@
         <div class="main-content">
             <div class="view-layer view-home" id="view-home">
                 <div class="upload-card">
-               
+       
                     <i class="fas fa-file-alt upload-icon"></i>
                     <div class="upload-title">轻量级 Markdown 阅读器</div>
                     <label class="btn-upload-lg">
@@ -231,18 +215,21 @@
                     </label>
                 </div>
             </div>
+  
             <div class="view-layer view-read hidden" id="view-read">
                 <div class="markdown-container">
            
                     <div class="markdown-body" id="reader-content"></div>
                 </div>
             </div>
+        
             <div class="view-layer view-edit hidden" id="view-edit">
                 <div class="edit-pane">
                     <textarea id="editor-textarea" placeholder="在此输入 Markdown..."></textarea>
      
                 </div>
                 <div class="preview-pane">
+              
                     <div class="markdown-body" id="editor-preview"></div>
                 </div>
             </div>
@@ -255,6 +242,7 @@
     <div class="drawer" id="drawer">
         <div class="drawer-header">
             <span>我的文件</span>
+        
             <div style="display: flex; gap: 4px;">
                 <button class="icon-btn" id="btn-sort" style="font-size: 16px; padding: 4px;" title="按时间排序"><i class="fas fa-sort-amount-down"></i></button>
                 <button class="icon-btn" id="btn-new-folder" style="font-size: 16px; padding: 4px;" title="新建文件夹"><i class="fas fa-folder-plus"></i></button>
@@ -287,12 +275,12 @@
                 langPrefix: 'hljs language-',
                 highlight(code, lang) {
                     const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-  
                     return hljs.highlight(code, { language }).value;
                 }
             }),
             markedKatex({ throwOnError: false, output: 'html' })
         );
+
         // ================= 核心状态与数据管理 =================
         let currentState = 'home';
         let currentFile = null;
@@ -305,6 +293,7 @@
             folders: [{ id: 'root', name: '默认文件夹', isOpen: true }],
             files: []
         };
+
         function getDB() {
             let rawStr = localStorage.getItem('md-pro-db');
             if (!rawStr) return JSON.parse(JSON.stringify(defaultDB));
@@ -352,7 +341,7 @@
         const readerContent = document.getElementById('reader-content'); const editorTextarea = document.getElementById('editor-textarea');
         const editorPreview = document.getElementById('editor-preview');
         const btnSort = document.getElementById('btn-sort');
-        
+
         // ================= UI 状态机控制 =================
         function switchState(newState) {
             currentState = newState;
@@ -423,30 +412,41 @@
             setTimeout(() => { actionMenuOverlay.style.display = 'none'; }, 300);
         }
         actionMenuOverlay.onclick = closeActionMenu;
-        
-        // ================= 侧边栏文件系统 (文件夹渲染核心逻辑) =================
-        
-        // 初始化排序图标
+
+        // ================= 侧边栏文件系统 (文件夹渲染与拖拽核心逻辑) =================
         btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
-        
-        // 绑定排序切换事件
         btnSort.onclick = () => {
             sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
             localStorage.setItem('md-pro-sort', sortOrder);
             btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
             renderDrawer();
         };
+
         function renderDrawer() {
             let db = getDB();
             const list = document.getElementById('history-list');
             list.innerHTML = '';
 
-            db.folders.forEach(folder => {
+            // 拆分文件夹分类，保证：默认文件夹 -> 置顶文件夹 -> 普通文件夹
+            const rootFolder = db.folders.find(f => f.id === 'root');
+            const customFolders = db.folders.filter(f => f.id !== 'root');
+            const pinnedFolders = customFolders.filter(f => f.isPinned);
+            const unpinnedFolders = customFolders.filter(f => !f.isPinned);
+
+            const renderFolders = [rootFolder, ...pinnedFolders, ...unpinnedFolders].filter(Boolean);
+
+            renderFolders.forEach(folder => {
                 const group = document.createElement('div');
                 group.className = `folder-group ${folder.isOpen ? 'open' : ''}`;
+                group.dataset.id = folder.id;
                 
                 const header = document.createElement('div');
                 header.className = 'folder-header';
+                
+                const pinIconStr = folder.isPinned ? 'fa-unlink' : 'fa-thumbtack';
+                const pinStyleStr = folder.isPinned ? 'style="color:var(--apple-blue)"' : '';
+                const pinBtnHtml = folder.id !== 'root' ? `<button class="folder-btn pin-folder-btn" title="${folder.isPinned ? '取消置顶' : '置顶'}"><i class="fas ${pinIconStr}" ${pinStyleStr}></i></button>` : '';
+
                 header.innerHTML = `
                     <div class="folder-info">
                         <i class="fas fa-chevron-right"></i>
@@ -455,6 +455,7 @@
                     </div>
                     <div class="folder-actions">
                         <button class="folder-btn rename-btn" title="重命名"><i class="fas fa-pen"></i></button>
+                        ${pinBtnHtml}
                         ${folder.id !== 'root' ? `<button class="folder-btn del-folder-btn" title="删除"><i class="fas fa-trash-alt"></i></button>` : ''}
                     </div>
                 `;
@@ -466,7 +467,16 @@
                     let newName = prompt("重命名文件夹：", folder.name);
                     if (newName && newName.trim() !== '') { folder.name = newName.trim(); saveDB(db); }
                 };
+
                 if (folder.id !== 'root') {
+                    // 置顶逻辑
+                    header.querySelector('.pin-folder-btn').onclick = (e) => {
+                        e.stopPropagation();
+                        folder.isPinned = !folder.isPinned;
+                        saveDB(db);
+                    };
+
+                    // 删除逻辑
                     header.querySelector('.del-folder-btn').onclick = (e) => {
                         e.stopPropagation();
                         const folderFiles = db.files.filter(f => f.folderId === folder.id);
@@ -479,6 +489,42 @@
                             if (confirm(`确定删除空文件夹 [${folder.name}] 吗？`)) { db.folders = db.folders.filter(f => f.id !== folder.id); saveDB(db); }
                         }
                     };
+
+                    // === 自定义文件夹拖拽排序逻辑 ===
+                    group.draggable = true;
+                    group.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', folder.id);
+                        group.classList.add('dragging');
+                    });
+                    group.addEventListener('dragend', () => {
+                        group.classList.remove('dragging');
+                        document.querySelectorAll('.folder-group').forEach(el => el.classList.remove('drag-over'));
+                    });
+                    group.addEventListener('dragover', (e) => {
+                        e.preventDefault(); 
+                        const draggingGroup = document.querySelector('.dragging');
+                        if (draggingGroup && draggingGroup !== group && draggingGroup.dataset.id !== 'root') {
+                             group.classList.add('drag-over');
+                        }
+                    });
+                    group.addEventListener('dragleave', () => {
+                        group.classList.remove('drag-over');
+                    });
+                    group.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        group.classList.remove('drag-over');
+                        const draggedId = e.dataTransfer.getData('text/plain');
+                        if (!draggedId || draggedId === folder.id || draggedId === 'root') return;
+
+                        let draggedIndex = db.folders.findIndex(f => f.id === draggedId);
+                        let targetIndex = db.folders.findIndex(f => f.id === folder.id);
+
+                        if (draggedIndex > -1 && targetIndex > -1) {
+                            const [draggedFolder] = db.folders.splice(draggedIndex, 1);
+                            db.folders.splice(targetIndex, 0, draggedFolder);
+                            saveDB(db);
+                        }
+                    });
                 }
 
                 const filesContainer = document.createElement('div');
@@ -489,9 +535,9 @@
                 folderFiles.sort((a, b) => {
                     if (a.isPinned && !b.isPinned) return -1;
                     if (!a.isPinned && b.isPinned) return 1;
-                    // 根据 sortOrder 状态决定按最新在前(desc)还是最旧在前(asc)
                     return sortOrder === 'desc' ? b.timestamp - a.timestamp : a.timestamp - b.timestamp;
                 });
+                
                 if (folderFiles.length === 0) {
                     filesContainer.innerHTML = `<div style="padding: 10px 16px 10px 36px; font-size:12px; color:var(--text-secondary);">空文件夹</div>`;
                 }
@@ -550,10 +596,11 @@
             let name = prompt("请输入新文件夹名称：");
             if (name && name.trim() !== '') {
                 let db = getDB();
-                db.folders.push({ id: 'folder_' + Date.now(), name: name.trim(), isOpen: true });
+                db.folders.push({ id: 'folder_' + Date.now(), name: name.trim(), isOpen: true, isPinned: false });
                 saveDB(db);
             }
         };
+
         let tooltipTimer;
         headerUI.headerTitle.onclick = () => {
             if (!currentFile) return;
@@ -563,6 +610,7 @@
             clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { titleTooltip.classList.remove('show'); }, 3000); 
         };
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
+
         headerUI.btnReadMore.onclick = () => {
             const isDark = document.body.getAttribute('data-theme') === 'dark';
             showActionMenu([
@@ -587,6 +635,25 @@
         const closeDrawer = () => { overlay.style.opacity = '0'; drawer.style.transform = 'translateX(-100%)'; setTimeout(() => overlay.style.display = 'none', 300); };
         headerUI.btnHamburger.onclick = openDrawer; overlay.onclick = closeDrawer;
         
+        // ================= 移动端边缘滑动呼出/关闭菜单 =================
+        let touchStartX = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            if (window.innerWidth >= 768) return; 
+            let touchEndX = e.changedTouches[0].screenX;
+            // 边缘左滑(起始点小于40px)向右超过50px -> 打开抽屉
+            if (touchStartX < 40 && touchEndX - touchStartX > 50) {
+                openDrawer();
+            }
+            // 抽屉打开时，向左滑动超过50px -> 关闭抽屉
+            if (overlay.style.display === 'block' && touchStartX - touchEndX > 50) {
+                closeDrawer();
+            }
+        }, { passive: true });
+
         btnFabToc.onclick = () => { tocOverlay.style.display = 'block'; setTimeout(() => tocOverlay.style.opacity = '1', 10); tocSidebar.classList.add('mobile-open'); };
         tocOverlay.onclick = () => { tocOverlay.style.opacity = '0'; tocSidebar.classList.remove('mobile-open'); setTimeout(() => tocOverlay.style.display = 'none', 300); };
         headerUI.btnBack.onclick = () => { if(currentState === 'edit') cancelEdit(); else switchState('home'); };
@@ -594,7 +661,7 @@
         headerUI.btnReadEdit.onclick = () => switchState('edit');
         headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
         headerUI.btnEditSave.onclick = saveEdit; headerUI.btnEditCancel.onclick = cancelEdit; headerUI.btnEditReset.onclick = resetEdit;
-        
+
         function saveToCurrentFolder(fileParams) {
             let db = getDB();
             let newFile = { ...fileParams, timestamp: Date.now(), isPinned: false, folderId: 'root' };
@@ -615,7 +682,7 @@
             const title = file.name.replace(/\.[^/.]+$/, ""); 
             const reader = new FileReader();
             reader.onload = ev => { 
-                currentFile = { id: Date.now().toString(), title, content: ev.target.result }; 
+                currentFile = { id: Date.now().toString(), title, content: ev.target.result };
                 saveToCurrentFolder(currentFile); 
                 switchState('read'); 
                 closeDrawer(); 
@@ -650,7 +717,8 @@
             target.querySelectorAll('pre code').forEach((block) => {
                 if (block.parentNode.querySelector('.copy-code-btn')) return; 
                 const pre = block.parentNode; const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
-                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); }); };
+                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); }); 
+                };
                 pre.appendChild(copyBtn);
             });
         }
@@ -667,17 +735,19 @@
         }
         
         editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
-        
+
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档");
         if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
-        
+
         headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：文件排序功能', content: '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！' }; saveToCurrentFolder(currentFile); switchState('read'); };
-        
+
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
         window.onresize = () => switchState(currentState);
 
-        function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`; document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
+        function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ?
+        '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`;
+        document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
         const savedTheme = localStorage.getItem('md-theme');
         setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
         
