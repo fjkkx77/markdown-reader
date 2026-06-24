@@ -19,6 +19,7 @@
     <link id="md-style" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-light.min.css">
     
     <style>
+    
         /* ================= 1. Apple 风格色彩与底层锁死 ================= */
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
@@ -212,12 +213,10 @@
         <div class="main-content">
             <div class="view-layer view-home" id="view-home">
                 <div class="upload-card">
-       
                     <i class="fas fa-file-alt upload-icon"></i>
                     <div class="upload-title">轻量级 Markdown 阅读器</div>
                     <label class="btn-upload-lg">
                         <i class="fas fa-upload"></i> 打开 MD 文件
-                   
                         <input type="file" id="file-upload-home" hidden>
                     </label>
                 </div>
@@ -225,7 +224,6 @@
   
             <div class="view-layer view-read hidden" id="view-read">
                 <div class="markdown-container">
-           
                     <div class="markdown-body" id="reader-content"></div>
                 </div>
             </div>
@@ -233,10 +231,8 @@
             <div class="view-layer view-edit hidden" id="view-edit">
                 <div class="edit-pane">
                     <textarea id="editor-textarea" placeholder="在此输入 Markdown..."></textarea>
-     
                 </div>
                 <div class="preview-pane">
-              
                     <div class="markdown-body" id="editor-preview"></div>
                 </div>
             </div>
@@ -249,7 +245,6 @@
     <div class="drawer" id="drawer">
         <div class="drawer-header">
             <span>我的文件</span>
-        
             <div style="display: flex; gap: 4px;">
                 <button class="icon-btn" id="btn-sort" style="font-size: 16px; padding: 4px;" title="按时间排序"><i class="fas fa-sort-amount-down"></i></button>
                 <button class="icon-btn" id="btn-new-folder" style="font-size: 16px; padding: 4px;" title="新建文件夹"><i class="fas fa-folder-plus"></i></button>
@@ -259,7 +254,6 @@
             <div class="menu-action" id="menu-new" style="color: var(--apple-green);"><i class="fas fa-plus-circle"></i> 新建空白文档</div>
             <label class="menu-action">
                 <i class="fas fa-file-upload"></i> 导入本地文件
-                
                 <input type="file" id="file-upload-drawer" hidden>
             </label>
             <div id="history-list" style="margin-top: 10px;"></div>
@@ -289,10 +283,9 @@
             // 安全加固：对 marked 输出的最终 HTML 做 XSS 过滤，防止 .md 文件中夹带的 <script>/onerror 等被执行
             { hooks: { postprocess: (html) => DOMPurify.sanitize(html, { ADD_ATTR: ['style'] }) } }
         );
-
         // Mermaid 图表渲染器（用于 ```mermaid 代码块）
         mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
-
+        
         // ================= highlight.js 按需语言加载 =================
         // CDN 默认的 highlight.min.js 只内置约35种常用语言，遇到代码块标注的语言未被识别时，
         // 自动从官方 CDN 按需加载对应语言包，从而覆盖 highlight.js 支持的全部190+种语言
@@ -410,7 +403,7 @@
         const readerContent = document.getElementById('reader-content'); const editorTextarea = document.getElementById('editor-textarea');
         const editorPreview = document.getElementById('editor-preview');
         const btnSort = document.getElementById('btn-sort');
-
+        
         // ================= UI 状态机控制 =================
         async function switchState(newState) {
             currentState = newState;
@@ -419,6 +412,7 @@
             vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
             btnFabToc.classList.add('hidden'); 
             Object.values(headerUI).forEach(el => { if(el && el.id !== 'btn-hamburger') el.classList.add('hidden'); });
+            
             if (newState === 'home') {
                 vHome.classList.remove('hidden');
                 headerUI.headerLogo.classList.remove('hidden');
@@ -481,16 +475,17 @@
             setTimeout(() => { actionMenuOverlay.style.display = 'none'; }, 300);
         }
         actionMenuOverlay.onclick = closeActionMenu;
-
+        
         // ================= 侧边栏文件系统 (文件夹渲染与拖拽核心逻辑) =================
-        btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
+        btnSort.innerHTML = sortOrder === 'desc' ?
+        '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
         btnSort.onclick = () => {
             sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
             localStorage.setItem('md-pro-sort', sortOrder);
             btnSort.innerHTML = sortOrder === 'desc' ? '<i class="fas fa-sort-amount-down"></i>' : '<i class="fas fa-sort-amount-up"></i>';
             renderDrawer();
         };
-
+        
         function renderDrawer() {
             let db = getDB();
             const list = document.getElementById('history-list');
@@ -501,7 +496,6 @@
             const customFolders = db.folders.filter(f => f.id !== 'root');
             const pinnedFolders = customFolders.filter(f => f.isPinned);
             const unpinnedFolders = customFolders.filter(f => !f.isPinned);
-
             const renderFolders = [rootFolder, ...pinnedFolders, ...unpinnedFolders].filter(Boolean);
 
             renderFolders.forEach(folder => {
@@ -528,15 +522,13 @@
                         ${folder.id !== 'root' ? `<button class="folder-btn del-folder-btn" title="删除"><i class="fas fa-trash-alt"></i></button>` : ''}
                     </div>
                 `;
-                
                 header.querySelector('.folder-info').onclick = () => { folder.isOpen = !folder.isOpen; saveDB(db); };
-
                 header.querySelector('.rename-btn').onclick = (e) => {
                     e.stopPropagation();
                     let newName = prompt("重命名文件夹：", folder.name);
                     if (newName && newName.trim() !== '') { folder.name = newName.trim(); saveDB(db); }
                 };
-
+                
                 if (folder.id !== 'root') {
                     // 置顶逻辑
                     header.querySelector('.pin-folder-btn').onclick = (e) => {
@@ -558,7 +550,7 @@
                             if (confirm(`确定删除空文件夹 [${folder.name}] 吗？`)) { db.folders = db.folders.filter(f => f.id !== folder.id); saveDB(db); }
                         }
                     };
-
+                    
                     // === 自定义文件夹拖拽排序逻辑 ===
                     group.draggable = true;
                     group.addEventListener('dragstart', (e) => {
@@ -573,7 +565,7 @@
                         e.preventDefault(); 
                         const draggingGroup = document.querySelector('.dragging');
                         if (draggingGroup && draggingGroup !== group && draggingGroup.dataset.id !== 'root') {
-                             group.classList.add('drag-over');
+                            group.classList.add('drag-over');
                         }
                     });
                     group.addEventListener('dragleave', () => {
@@ -625,10 +617,25 @@
 
                     item.querySelector('.history-info').onclick = () => { currentFile = file; closeDrawer(); switchState('read'); };
                     
+                    // ================= 修改核心：新增重命名功能 =================
                     item.querySelector('.history-more-btn').onclick = (e) => {
                         e.stopPropagation();
                         showActionMenu([
                             { text: `对 "${file.title}" 进行操作`, isTitle: true },
+                            { text: '重命名文档', icon: 'fas fa-pen', action: () => {
+                                let newTitle = prompt("重命名文档：", file.title);
+                                if (newTitle && newTitle.trim() !== '') {
+                                    file.title = newTitle.trim();
+                                    saveDB(db);
+                                    if (currentFile && currentFile.id === file.id) {
+                                        currentFile.title = file.title;
+                                        let headerTitleEl = document.getElementById('header-title');
+                                        if (headerTitleEl) {
+                                            headerTitleEl.innerText = currentState === 'edit' ? "编辑: " + file.title : file.title;
+                                        }
+                                    }
+                                }
+                            }},
                             { text: file.isPinned ? '取消置顶' : '置顶文档', icon: `fas ${file.isPinned ? 'fa-unlink' : 'fa-thumbtack'}`, action: () => {
                                 file.isPinned = !file.isPinned; saveDB(db);
                             }},
@@ -653,6 +660,8 @@
                             }}
                         ]);
                     };
+                    // ================= 修改结束 =================
+                    
                     filesContainer.appendChild(item);
                 });
 
@@ -679,7 +688,7 @@
             clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { titleTooltip.classList.remove('show'); }, 3000); 
         };
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
-
+        
         headerUI.btnReadMore.onclick = () => {
             const isDark = document.body.getAttribute('data-theme') === 'dark';
             showActionMenu([
@@ -709,7 +718,7 @@
         document.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
         }, { passive: true });
-
+        
         document.addEventListener('touchend', (e) => {
             if (window.innerWidth >= 768) return; 
             let touchEndX = e.changedTouches[0].screenX;
@@ -722,15 +731,16 @@
                 closeDrawer();
             }
         }, { passive: true });
-
+        
         btnFabToc.onclick = () => { tocOverlay.style.display = 'block'; setTimeout(() => tocOverlay.style.opacity = '1', 10); tocSidebar.classList.add('mobile-open'); };
         tocOverlay.onclick = () => { tocOverlay.style.opacity = '0'; tocSidebar.classList.remove('mobile-open'); setTimeout(() => tocOverlay.style.display = 'none', 300); };
+        
         headerUI.btnBack.onclick = () => { if(currentState === 'edit') cancelEdit(); else switchState('home'); };
         headerUI.headerLogo.onclick = () => switchState('home');
         headerUI.btnReadEdit.onclick = () => switchState('edit');
         headerUI.btnReadCopy.onclick = () => copyContent(headerUI.btnReadCopy);
         headerUI.btnEditSave.onclick = saveEdit; headerUI.btnEditCancel.onclick = cancelEdit; headerUI.btnEditReset.onclick = resetEdit;
-
+        
         function saveToCurrentFolder(fileParams) {
             let db = getDB();
             let newFile = { ...fileParams, timestamp: Date.now(), isPinned: false, folderId: 'root' };
@@ -766,19 +776,19 @@
         }
         document.getElementById('file-upload-home').onchange = handleFile;
         document.getElementById('file-upload-drawer').onchange = handleFile;
-
+        
         // ================= 新增：全局拖拽文件监听逻辑 =================
         document.addEventListener('dragover', (e) => {
             e.preventDefault(); // 必须阻止默认行为，否则鼠标会显示“禁止拖拽”图标
         });
-
+        
         document.addEventListener('drop', (e) => {
             e.preventDefault(); // 必须阻止默认行为，否则浏览器会直接离开当前页面去打开文件
             if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 processFileObj(e.dataTransfer.files[0]);
             }
         });
-
+        
         // ================= Markdown 渲染及其他逻辑 =================
         async function renderMarkdown(text, target) {
             const body = stripFrontMatter(text);
@@ -790,21 +800,21 @@
             target.querySelectorAll('h1, h2, h3, h4').forEach((heading) => {
                 heading.id = slugify(heading.textContent, usedSlugs);
             });
-
+            
             // 代码块复制按钮：用外层 wrapper 承载按钮，避免 pre 横向滚动时按钮跟着移动
             target.querySelectorAll('pre code').forEach((block) => {
                 const pre = block.parentNode;
                 if (pre.parentNode.classList.contains('code-block-wrapper')) return;
                 const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
-                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); });
-                };
+                
+                copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); }); };
                 const wrapper = document.createElement('div');
                 wrapper.className = 'code-block-wrapper';
                 pre.parentNode.insertBefore(wrapper, pre);
                 wrapper.appendChild(pre);
                 wrapper.appendChild(copyBtn);
             });
-
+            
             // Mermaid 图表：将 ```mermaid 代码块转换为图表，复制按钮一并迁移到图表容器上
             const mermaidBlocks = target.querySelectorAll('pre code.language-mermaid');
             if (mermaidBlocks.length > 0) {
@@ -816,6 +826,7 @@
                     const graph = document.createElement('div');
                     graph.className = 'mermaid';
                     graph.textContent = block.textContent;
+                    
                     wrapper.appendChild(graph);
                     const copyBtn = codeWrapper.querySelector('.copy-code-btn');
                     if (copyBtn) wrapper.appendChild(copyBtn);
@@ -838,12 +849,12 @@
         }
         
         editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
-
+        
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档");
         if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
-
+        
         headerUI.btnHomeSample.onclick = () => { currentFile = { id: 'sample', title: '示例：文件排序功能', content: '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！' }; saveToCurrentFolder(currentFile); switchState('read'); };
-
+        
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
         window.onresize = () => switchState(currentState);
