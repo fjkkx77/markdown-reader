@@ -28,6 +28,8 @@
             --bg-base: #F2F2F7; --bg-surface: #FFFFFF; --text-main: #000000; --text-secondary: #6C6C70;
             --border-color: #E5E5EA; --header-bg: rgba(255, 255, 255, 0.85); --sidebar-bg: #F8F8F8;
             --header-height: 55px;
+            /* 阅读区字号缩放，1 = 100%，由字号+/-按钮调节并存到 localStorage */
+            --md-font-scale: 1;
         }
         
         [data-theme="dark"] {
@@ -96,12 +98,26 @@
 
         .view-read { padding: 30px 20px; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
         .markdown-container { max-width: 900px; margin: 0 auto; }
-        .markdown-body { background: transparent !important; color: inherit !important; font-family: inherit !important; }
+        .markdown-body { background: transparent !important; color: inherit !important; font-family: inherit !important; font-size: calc(16px * var(--md-font-scale)) !important; }
 
         .markdown-body pre { position: relative; }
         .markdown-body .code-block-wrapper { position: relative; }
         .copy-code-btn { position: absolute; top: 8px; right: 8px; background: rgba(128, 128, 128, 0.2); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--apple-blue); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; z-index: 2; }
         .copy-code-btn:hover { opacity: 1; }
+
+        /* 长代码块行号：只在行数较多(>3行)的代码块上生成，避免给一两行的小代码块添乱。
+           行号列和代码本身必须显式使用同一组 font/line-height，否则各自继承外部样式表可能导致行高对不齐 */
+        .markdown-body pre code, .line-numbers-rows {
+            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace !important;
+            font-size: 13px !important; line-height: 1.6 !important;
+        }
+        .code-block-wrapper.with-line-numbers { display: flex; align-items: stretch; }
+        .code-block-wrapper.with-line-numbers pre { flex: 1; min-width: 0; }
+        .line-numbers-rows {
+            flex-shrink: 0; user-select: none; text-align: right; color: var(--text-secondary); opacity: 0.5;
+            padding: 1em 10px 1em 0; margin-right: 4px; border-right: 1px solid var(--border-color);
+        }
+        .line-numbers-rows span { display: block; }
 
         .markdown-body .mermaid-wrapper { position: relative; }
         .markdown-body .mermaid { overflow-x: auto; padding: 8px 0; }
@@ -196,6 +212,8 @@
             <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
   
             <button class="text-btn primary hidden" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
+            <button class="icon-btn hidden" id="btn-font-dec" title="缩小字号"><i class="fas fa-text-height" style="font-size:0.85em;"></i></button>
+            <button class="icon-btn hidden" id="btn-font-inc" title="放大字号"><i class="fas fa-text-height"></i></button>
             <button class="text-btn hidden" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             <button class="text-btn hidden" id="btn-edit-reset">重置</button>
             <button class="text-btn primary hidden" id="btn-edit-save">保存</button>
@@ -389,7 +407,8 @@
             btnReadCopy: document.getElementById('btn-read-copy'), btnReadEdit: document.getElementById('btn-read-edit'),
             btnReadMore: document.getElementById('btn-read-more'), btnEditSave: document.getElementById('btn-edit-save'),
             btnEditCancel: document.getElementById('btn-edit-cancel'), btnEditReset: document.getElementById('btn-edit-reset'),
-            btnEditMore: document.getElementById('btn-edit-more'), 
+            btnEditMore: document.getElementById('btn-edit-more'),
+            btnFontDec: document.getElementById('btn-font-dec'), btnFontInc: document.getElementById('btn-font-inc'),
             headerLogo: document.getElementById('header-logo'),
             headerTitle: document.getElementById('header-title')
         };
@@ -429,7 +448,8 @@
                     btnFabToc.classList.remove('hidden'); 
                 } else {
                     headerUI.btnReadCopy.classList.remove('hidden');
-                    headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
+                    headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
+                    headerUI.btnFontDec.classList.remove('hidden'); headerUI.btnFontInc.classList.remove('hidden');
                 }
                 await renderMarkdown(currentFile.content, readerContent);
                 generateTOC();
@@ -694,6 +714,8 @@
             showActionMenu([
                 { text: '编辑文档', icon: 'fas fa-edit', action: () => switchState('edit') },
                 { text: '复制全文', icon: 'fas fa-copy', action: () => copyContent(null) },
+                { text: '放大字号', icon: 'fas fa-plus', action: () => changeFontScale(0.1) },
+                { text: '缩小字号', icon: 'fas fa-minus', action: () => changeFontScale(-0.1) },
                 { text: isDark ? '浅色模式' : '深色模式', icon: isDark ? 'fas fa-sun' : 'fas fa-moon', action: () => toggleTheme() },
                 { text: '返回主页', icon: 'fas fa-home', action: () => switchState('home'), danger: true }
             ]);
@@ -806,11 +828,23 @@
                 const pre = block.parentNode;
                 if (pre.parentNode.classList.contains('code-block-wrapper')) return;
                 const copyBtn = document.createElement('button'); copyBtn.className = 'copy-code-btn'; copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
-                
+
                 copyBtn.onclick = () => { navigator.clipboard.writeText(block.textContent).then(() => { copyBtn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => copyBtn.innerHTML = '<i class="fas fa-copy"></i>', 2000); }); };
                 const wrapper = document.createElement('div');
                 wrapper.className = 'code-block-wrapper';
                 pre.parentNode.insertBefore(wrapper, pre);
+
+                // 行号：超过3行的代码块才加，且不对将被转成图表的 mermaid 代码块加（Mermaid 图表本身就不需要行号）
+                const isMermaid = block.classList.contains('language-mermaid');
+                const lines = block.textContent.replace(/\n$/, '').split('\n');
+                if (!isMermaid && lines.length > 3) {
+                    const gutter = document.createElement('div');
+                    gutter.className = 'line-numbers-rows';
+                    gutter.innerHTML = lines.map((_, i) => `<span>${i + 1}</span>`).join('');
+                    wrapper.classList.add('with-line-numbers');
+                    wrapper.appendChild(gutter);
+                }
+
                 wrapper.appendChild(pre);
                 wrapper.appendChild(copyBtn);
             });
@@ -858,6 +892,18 @@
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
         window.onresize = () => switchState(currentState);
+
+        // ================= 阅读区字号缩放（0.8~1.4，步进0.1，存到 localStorage） =================
+        let mdFontScale = parseFloat(localStorage.getItem('md-font-scale')) || 1;
+        function applyFontScale() { document.documentElement.style.setProperty('--md-font-scale', mdFontScale); }
+        function changeFontScale(delta) {
+            mdFontScale = Math.min(1.4, Math.max(0.8, +(mdFontScale + delta).toFixed(2)));
+            localStorage.setItem('md-font-scale', mdFontScale);
+            applyFontScale();
+        }
+        headerUI.btnFontDec.onclick = () => changeFontScale(-0.1);
+        headerUI.btnFontInc.onclick = () => changeFontScale(0.1);
+        applyFontScale();
 
         function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ?
         '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`;
