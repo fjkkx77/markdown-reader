@@ -106,18 +106,27 @@
         .copy-code-btn:hover { opacity: 1; }
 
         /* 长代码块行号：只在行数较多(>3行)的代码块上生成，避免给一两行的小代码块添乱。
-           行号列和代码本身必须显式使用同一组 font/line-height，否则各自继承外部样式表可能导致行高对不齐 */
-        .markdown-body pre code, .line-numbers-rows {
+           行号列和代码本身必须显式使用同一组 font/line-height，否则各自继承外部样式表可能导致行高对不齐。
+           这里连 pre 本身也要一起锁死：github-markdown-css 给 pre 定义的是 font-size:85%/line-height:1.45
+           这种跟随父级字号走的相对值，如果只固定 code 不固定 pre，阅读字号一放大/缩小，pre 自己的行高
+           还是会跟着变，行号列（本身固定13px/1.6）就会跟代码对不上——所以阅读字号缩放绝不能影响代码块，
+           连 pre 这一层也要显式钉死，不能只钉里面的 code */
+        .markdown-body pre, .markdown-body pre code, .line-numbers-rows {
             font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace !important;
             font-size: 13px !important; line-height: 1.6 !important;
         }
         .code-block-wrapper.with-line-numbers { display: flex; align-items: stretch; }
         .code-block-wrapper.with-line-numbers pre { flex: 1; min-width: 0; }
+        /* 行号是否显示由用户开关决定，默认关闭：这里默认 display:none，
+           只有 body 带上 show-line-numbers 时才显示，隐藏的 gutter 不占 flex 空间，pre 会自动填满整行 */
         .line-numbers-rows {
+            display: none;
             flex-shrink: 0; user-select: none; text-align: right; color: var(--text-secondary); opacity: 0.5;
             padding: 1em 10px 1em 0; margin-right: 4px; border-right: 1px solid var(--border-color);
         }
+        body.show-line-numbers .line-numbers-rows { display: block; }
         .line-numbers-rows span { display: block; }
+        .icon-btn.active { background: rgba(0, 122, 255, 0.15); }
 
         .markdown-body .mermaid-wrapper { position: relative; }
         .markdown-body .mermaid { overflow-x: auto; padding: 8px 0; }
@@ -212,8 +221,10 @@
             <button class="icon-btn hidden" id="btn-read-copy" title="复制全文"><i class="fas fa-copy"></i></button>
   
             <button class="text-btn primary hidden" id="btn-read-edit"><i class="fas fa-edit"></i> 编辑</button>
-            <button class="icon-btn hidden" id="btn-font-dec" title="缩小字号"><i class="fas fa-text-height" style="font-size:0.85em;"></i></button>
-            <button class="icon-btn hidden" id="btn-font-inc" title="放大字号"><i class="fas fa-text-height"></i></button>
+            <button class="icon-btn hidden" id="btn-font-dec" title="缩小字号" style="font-weight:700; font-size:14px;">A-</button>
+            <button class="icon-btn hidden" id="btn-font-reset" title="恢复默认字号"><i class="fas fa-rotate-left" style="font-size:0.85em;"></i></button>
+            <button class="icon-btn hidden" id="btn-font-inc" title="放大字号" style="font-weight:700; font-size:14px;">A+</button>
+            <button class="icon-btn hidden" id="btn-linenum-toggle" title="显示代码行号"><i class="fas fa-list-ol"></i></button>
             <button class="text-btn hidden" id="btn-home-sample"><i class="fas fa-file-code"></i> 示例</button>
             <button class="text-btn hidden" id="btn-edit-reset">重置</button>
             <button class="text-btn primary hidden" id="btn-edit-save">保存</button>
@@ -409,6 +420,8 @@
             btnEditCancel: document.getElementById('btn-edit-cancel'), btnEditReset: document.getElementById('btn-edit-reset'),
             btnEditMore: document.getElementById('btn-edit-more'),
             btnFontDec: document.getElementById('btn-font-dec'), btnFontInc: document.getElementById('btn-font-inc'),
+            btnFontReset: document.getElementById('btn-font-reset'),
+            btnLinenumToggle: document.getElementById('btn-linenum-toggle'),
             headerLogo: document.getElementById('header-logo'),
             headerTitle: document.getElementById('header-title')
         };
@@ -450,6 +463,8 @@
                     headerUI.btnReadCopy.classList.remove('hidden');
                     headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
                     headerUI.btnFontDec.classList.remove('hidden'); headerUI.btnFontInc.classList.remove('hidden');
+                    headerUI.btnFontReset.classList.remove('hidden');
+                    headerUI.btnLinenumToggle.classList.remove('hidden');
                 }
                 await renderMarkdown(currentFile.content, readerContent);
                 generateTOC();
@@ -716,6 +731,8 @@
                 { text: '复制全文', icon: 'fas fa-copy', action: () => copyContent(null) },
                 { text: '放大字号', icon: 'fas fa-plus', action: () => changeFontScale(0.1) },
                 { text: '缩小字号', icon: 'fas fa-minus', action: () => changeFontScale(-0.1) },
+                { text: '恢复默认字号', icon: 'fas fa-rotate-left', action: () => resetFontScale() },
+                { text: showLineNumbers ? '隐藏代码行号' : '显示代码行号', icon: 'fas fa-list-ol', action: () => toggleLineNumbers() },
                 { text: isDark ? '浅色模式' : '深色模式', icon: isDark ? 'fas fa-sun' : 'fas fa-moon', action: () => toggleTheme() },
                 { text: '返回主页', icon: 'fas fa-home', action: () => switchState('home'), danger: true }
             ]);
@@ -901,9 +918,26 @@
             localStorage.setItem('md-font-scale', mdFontScale);
             applyFontScale();
         }
+        function resetFontScale() { mdFontScale = 1; localStorage.setItem('md-font-scale', 1); applyFontScale(); }
         headerUI.btnFontDec.onclick = () => changeFontScale(-0.1);
         headerUI.btnFontInc.onclick = () => changeFontScale(0.1);
+        headerUI.btnFontReset.onclick = resetFontScale;
         applyFontScale();
+
+        // ================= 代码行号显示开关（默认关闭，存到 localStorage） =================
+        let showLineNumbers = localStorage.getItem('md-line-numbers') === 'on';
+        function applyLineNumberPref() {
+            document.body.classList.toggle('show-line-numbers', showLineNumbers);
+            headerUI.btnLinenumToggle.classList.toggle('active', showLineNumbers);
+            headerUI.btnLinenumToggle.title = showLineNumbers ? '隐藏代码行号' : '显示代码行号';
+        }
+        function toggleLineNumbers() {
+            showLineNumbers = !showLineNumbers;
+            localStorage.setItem('md-line-numbers', showLineNumbers ? 'on' : 'off');
+            applyLineNumberPref();
+        }
+        headerUI.btnLinenumToggle.onclick = toggleLineNumbers;
+        applyLineNumberPref();
 
         function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ?
         '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`;
