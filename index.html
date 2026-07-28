@@ -55,9 +55,11 @@
             justify-content: space-between; padding: 0 16px; z-index: 100;
         }
 
-        .header-section { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-        .header-center { flex: 2; justify-content: center; text-align: center; min-width: 0; padding: 0 12px; }
-        .header-right { justify-content: flex-end; gap: 8px; flex: 1; min-width: 0; }
+        /* 左右两侧按钮区域按内容实际宽度排布（不参与拉伸抢空间），标题区独占剩余空间自适应收缩，
+           避免"返回"按钮在窄屏下被 flex:1 分配到的空间挤压，导致文字溢出盖住标题 */
+        .header-section { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; min-width: 0; }
+        .header-center { flex: 1; justify-content: center; text-align: center; min-width: 0; padding: 0 12px; }
+        .header-right { justify-content: flex-end; gap: 8px; flex: 0 0 auto; min-width: 0; }
 
         .icon-btn { background: none; border: none; color: var(--apple-blue); flex-shrink: 0; font-size: 1.3rem; padding: 8px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; }
         .icon-btn:active { opacity: 0.5; }
