@@ -725,7 +725,13 @@
             clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { titleTooltip.classList.remove('show'); }, 3000); 
         };
         titleTooltip.onclick = () => titleTooltip.classList.remove('show');
-        
+        document.addEventListener('click', (e) => {
+            if (!titleTooltip.classList.contains('show')) return;
+            if (titleTooltip.contains(e.target) || headerUI.headerTitle.contains(e.target)) return;
+            titleTooltip.classList.remove('show');
+            clearTimeout(tooltipTimer);
+        });
+
         headerUI.btnReadMore.onclick = () => {
             const isDark = document.body.getAttribute('data-theme') === 'dark';
             showActionMenu([
