@@ -30,12 +30,15 @@
             --header-height: 55px;
             /* 阅读区字号缩放，1 = 100%，由字号+/-按钮调节并存到 localStorage */
             --md-font-scale: 1;
+            /* 编辑光标定位同步命中时预览区块短暂闪一下的提示色 */
+            --sync-highlight-bg: #fff59d;
         }
-        
+
         [data-theme="dark"] {
             --apple-blue: #0A84FF; --apple-green: #30D158; --apple-red: #FF453A;
             --bg-base: #000000; --bg-surface: #1C1C1E; --text-main: #FFFFFF; --text-secondary: #EBEBF5;
             --border-color: #38383A; --header-bg: rgba(28, 28, 30, 0.85); --sidebar-bg: #151515;
+            --sync-highlight-bg: #6b5b00;
         }
         
         html, body { height: 100%; width: 100%; overflow: hidden; }
@@ -139,6 +142,12 @@
         .edit-pane { background: var(--bg-surface); border-bottom: 1px solid var(--border-color); }
         .preview-pane { background: var(--bg-base); }
         #editor-textarea { width: 100%; height: 100%; resize: none; border: none; outline: none; background: transparent; color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 16px; line-height: 1.6; padding: 5px; }
+
+        /* 编辑光标定位同步：光标移动到源码某一行时，预览区对应block短暂闪一下
+           提示"就是这一块"，跟markdown-reader既有的高亮反馈风格（比如复制成功
+           按钮变对勾）保持同一种"轻量瞬时反馈"的调性。 */
+        #editor-preview > *.sync-highlight { animation: sync-highlight-flash 0.9s ease-out; border-radius: 6px; }
+        @keyframes sync-highlight-flash { from { background: var(--sync-highlight-bg); } to { background: transparent; } }
 
         @media (min-width: 768px) { .view-edit { flex-direction: row; } .edit-pane { border-bottom: none; border-right: 1px solid var(--border-color); } }
         @media (max-width: 767px) { 
@@ -842,6 +851,34 @@
             await ensureCodeLanguagesLoaded(body);
             target.innerHTML = marked.parse(body);
 
+            // 编辑光标定位同步：给渲染结果里每个顶层block元素标一个data-start-line
+            // （对应它在源码里的起始行号），供 scrollPreviewToCursor() 用来找光标
+            // 当前所在行该对应预览区哪一块。这里刻意不用 marked.lexer()+
+            // marked.parser([token]) 逐block单独渲染的做法——marked.use()注册的
+            // postprocess钩子（DOMPurify.sanitize，防止.md文件里夹带的<script>/
+            // onerror被执行）只在marked.parse()这条完整流水线上生效，marked.parser()
+            // 单独调用不会触发这个钩子（实测验证过：同一段带onerror的恶意内容，
+            // marked.parse()正确剥离，marked.lexer()+marked.parser()逐block渲染
+            // 会原样漏过去）。改成安全的做法：先用上面已经过完整流水线（含
+            // 净化）产出的target.innerHTML不动，只用marked.lexer()做纯粹的分词
+            // （不产出任何HTML，只是为了拿到每个顶层block在源码里的起始行号），
+            // 再按顺序跟target的顶层子元素一一对应着打标——marked自己解析时
+            // 顶层block token（跳过不产出内容的'space'空行token）和顶层渲染
+            // 出来的DOM子元素在数量和顺序上是严格一一对应的，不需要重新生成
+            // 或改动任何HTML内容，只是往已经净化过的现成DOM上加几个数字属性，
+            // 不会重新引入任何XSS风险。
+            const lineTrackingTokens = marked.lexer(body, { gfm: true, breaks: true }).filter(t => t.type !== 'space');
+            let searchFrom = 0;
+            lineTrackingTokens.forEach((token, i) => {
+                const raw = token.raw || '';
+                let idx = raw ? body.indexOf(raw, searchFrom) : searchFrom;
+                if (idx === -1) idx = searchFrom;
+                const startLine = (body.slice(0, idx).match(/\n/g) || []).length;
+                searchFrom = idx + raw.length;
+                const el = target.children[i];
+                if (el) el.dataset.startLine = startLine;
+            });
+
             // 标题锚点：使用 GitHub 风格 slug，支持文档内 [文字](#标题) 跳转
             const usedSlugs = new Set();
             target.querySelectorAll('h1, h2, h3, h4').forEach((heading) => {
@@ -907,8 +944,31 @@
             });
         }
         
-        editorTextarea.addEventListener('input', e => renderMarkdown(e.target.value, editorPreview));
-        
+        function flashHighlight(el) {
+            if (!el) return;
+            el.classList.remove('sync-highlight');
+            void el.offsetWidth; // force reflow so re-adding the class restarts the animation
+            el.classList.add('sync-highlight');
+            setTimeout(() => el.classList.remove('sync-highlight'), 900);
+        }
+
+        function scrollPreviewToCursor() {
+            const blocks = Array.from(editorPreview.children).filter(el => el.dataset.startLine !== undefined);
+            if (blocks.length === 0) return;
+            const cursorLine = (editorTextarea.value.slice(0, editorTextarea.selectionStart).match(/\n/g) || []).length;
+            let target = blocks[0];
+            for (const block of blocks) {
+                if (Number(block.dataset.startLine) <= cursorLine) target = block; else break;
+            }
+            target.scrollIntoView({ block: 'center' });
+            flashHighlight(target);
+        }
+
+        const CURSOR_MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
+        editorTextarea.addEventListener('click', scrollPreviewToCursor);
+        editorTextarea.addEventListener('keyup', e => { if (CURSOR_MOVE_KEYS.has(e.key)) scrollPreviewToCursor(); });
+        editorTextarea.addEventListener('input', async e => { await renderMarkdown(e.target.value, editorPreview); scrollPreviewToCursor(); });
+
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档");
         if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
         
