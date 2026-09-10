@@ -209,10 +209,10 @@
         @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
         .title-tooltip { position: fixed; top: calc(var(--header-height) + env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%); background: var(--header-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); color: var(--text-main); padding: 10px 18px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid var(--border-color); z-index: 1000; max-width: 90vw; word-break: break-all; font-weight: 500; font-size: 14px; text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
-        /* 淡入延迟 0.31s 略大于双击判定窗口(300ms)：双击回顶时 tooltip 还没开始显现，
-           因此不会闪一下。收起走上面基础态的 0.3s（无延迟），不受影响。 */
-        .title-tooltip.show { opacity: 1; pointer-events: auto; transition: opacity 0.15s ease 0.31s; }
-        .title-tooltip-hint { margin-top: 6px; font-size: 12px; font-weight: 400; opacity: 0.55; word-break: keep-all; }
+        /* 淡入延迟 0.21s 必须略大于双击判定窗口 TITLE_DBLCLICK_MS(200ms)：
+           这样被判为双击时 tooltip 还没开始显现，不会闪一下。改窗口就要同步改这里。
+           收起走上面基础态的 0.3s（无延迟），不受影响。 */
+        .title-tooltip.show { opacity: 1; pointer-events: auto; transition: opacity 0.08s ease 0.21s; }
 
         .fab-toc { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); right: 20px; width: 50px; height: 50px; border-radius: 25px; background: var(--apple-blue); color: white; border: none; box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4); font-size: 20px; z-index: 150; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s, opacity 0.2s, background 0.2s; }
         .fab-toc:active { transform: scale(0.9); background: #005ecb; }
@@ -732,26 +732,11 @@
         };
 
         let tooltipTimer;
-        // 双击标题回到顶部：判定窗口 300ms。窗口内的第二击算双击，
-        // 窗口外（含单击后什么都不做）走原来的 tooltip toggle 逻辑，零延迟。
-        const TITLE_DBLCLICK_MS = 300;
+        // 双击标题回到顶部。窗口内的第二击算双击，窗口外走原来的 tooltip toggle 逻辑。
+        // 窗口越小、tooltip 淡入延迟就能越小、单击看文件名越快，代价是双击要点得更快；
+        // 200ms 是实测选的平衡点。改这里必须同步改 .title-tooltip.show 的 transition 延迟。
+        const TITLE_DBLCLICK_MS = 200;
         let titleClickTimer = null;
-
-        // tooltip 内容用 DOM API 构造：文件名来自用户本机任意 .md，
-        // 这条路径不经过 marked 的 DOMPurify 管线，所以只能走 textContent，
-        // 绝不能拼 innerHTML（形如 <img src=x onerror=...>.md 的文件名会被执行）。
-        const fillTitleTooltip = () => {
-            titleTooltip.textContent = '';
-            const nameEl = document.createElement('div');
-            nameEl.textContent = currentFile.title;
-            titleTooltip.appendChild(nameEl);
-            if (currentState === 'read') {
-                const hintEl = document.createElement('div');
-                hintEl.className = 'title-tooltip-hint';
-                hintEl.textContent = '双击标题可回到顶部';
-                titleTooltip.appendChild(hintEl);
-            }
-        };
 
         // 瞬间收起 tooltip：临时关掉 0.3s 的 opacity 过渡，
         // 否则双击时刚淡入一半的 tooltip 会留下一次可见的闪烁。
@@ -771,7 +756,10 @@
 
         const toggleTitleTooltip = () => {
             if (titleTooltip.classList.contains('show')) { titleTooltip.classList.remove('show'); clearTimeout(tooltipTimer); return; }
-            fillTitleTooltip();
+            // 文件名来自用户本机任意 .md，这条路径不经过 marked 的 DOMPurify 管线，
+            // 所以只能走 textContent，绝不能拼 innerHTML（形如
+            // <img src=x onerror=...>.md 的文件名会被执行）。
+            titleTooltip.textContent = currentFile.title;
             titleTooltip.classList.add('show');
             clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { titleTooltip.classList.remove('show'); }, 3000);
         };
