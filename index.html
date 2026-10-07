@@ -5,11 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Markdown Reader</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 版本全部钉死（2026-10-06）：原来 marked / marked-highlight / marked-katex-extension 三个地址都没写版本号。
+         marked 从 v16 起不再提供 marked.min.js，CDN 是「回退到最后一个还有这个文件的版本」才给出 v15.0.12 的，
+         属于凑巧能用；哪天扩展发了只支持新版 marked 的版本，页面会无声无息地坏掉。
+         这里钉的就是当时实际在跑的版本，行为不变。升级要整组一起升、一起测。 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked-highlight/lib/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked-highlight@2.2.2/lib/index.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked-katex-extension/lib/index.umd.js"></script>
+    <!-- 脚注 [^1] 和 GitHub 提示框 > [!NOTE]（2026-10-06 加，跟 MyKnowledgeBase 同一对扩展、同一版本） -->
+    <script src="https://cdn.jsdelivr.net/npm/marked-footnote@1.4.0/dist/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked-alert@2.1.2/dist/index.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.10/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
 
@@ -136,6 +142,14 @@
         .markdown-body .mermaid-wrapper { position: relative; }
         .markdown-body .mermaid { overflow-x: auto; padding: 8px 0; }
         .markdown-body .mermaid svg { max-width: 100%; }
+
+        /* 编辑预览里每个顶层块前面的空行号标记（光标同步用，见 annotateBlocks）。零高度、不占位，
+           上下两块的外边距照样穿过它折叠，排版跟阅读视图一样。github-markdown-css 用
+           .markdown-body>:first-child 去掉第一块的上边距，第一个子元素变成标记后要补到它后面那块上。 */
+        .kb-block-mark { display: block; height: 0; margin: 0; padding: 0; }
+        .markdown-body > .kb-block-mark:first-child + * { margin-top: 0 !important; }
+        /* 脚注区的「脚注」标题：跟 GitHub 一样留给读屏软件、视觉上藏起来。github-markdown-css 不带这个类。 */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
         .view-edit { display: flex; flex-direction: column; overflow: hidden; }
         .edit-pane, .preview-pane { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
@@ -312,7 +326,112 @@
 
     <script>
         const { markedHighlight } = globalThis.markedHighlight;
-        const markedKatex = globalThis.markedKatex;
+
+        // ================= 数学公式（KaTeX） =================
+        // 2026-10-06 换掉了 marked-katex-extension：它的规则要求 $ 前后必须是空格或标点，
+        // 中文里公式几乎都是紧贴着字写的——「面积是$\pi r^2$平方米」「质能方程：$E = mc^2$」
+        // 实测原样显示成 $…$。分词规则改成跟 MyKnowledgeBase（public/math-extension.js）
+        // 完全一样，两个站从此对同一份 markdown 判出同样的公式；渲染仍然用 KaTeX。
+        // 规则：$$…$$ 是行间公式；$…$ 是行内公式，前后不要求空格；但看起来像金额的不算——
+        // 「$5$」「$19.99，那件 $5」这类（收尾的 $ 后紧跟数字，或者开头就是金额）。
+        function looksLikeMoney(inner, restAfterMatch) {
+            if (/^\d[\d,]*(\.\d{1,2})?$/.test(inner)) return true;
+            if (/^\d[\d,]*(\.\d{1,2})?[，,。.、]/.test(inner)) return true;
+            if (restAfterMatch && /[\d,]/.test(restAfterMatch[0])) return true;
+            return false;
+        }
+        const mathExtension = {
+            name: 'math',
+            level: 'inline',
+            start(src) { return src.indexOf('$'); },
+            tokenizer(src) {
+                let match;
+                if ((match = /^\$\$([\s\S]+?)\$\$/.exec(src))) {
+                    return { type: 'math', raw: match[0], text: match[1], displayMode: true };
+                }
+                // (?:\\.|[^$\n]) 让 \$ 这种转义的美元符号不会提前结束公式
+                if ((match = /^\$((?:\\.|[^$\n])+?)\$/.exec(src))) {
+                    if (looksLikeMoney(match[1].trim(), src.slice(match[0].length))) return false;
+                    return { type: 'math', raw: match[0], text: match[1], displayMode: false };
+                }
+                return false;
+            },
+            renderer(token) {
+                return katex.renderToString(token.text.trim(), { throwOnError: false, displayMode: token.displayMode, output: 'html' });
+            }
+        };
+
+        // ================= 裸链接在中文标点处截断 =================
+        // GFM 规定裸链接一直延伸到空白或 < 为止，英文里 URL 后面总有空格，中文句子里没有——
+        // 「（来源：示例，https://example.com/a.html）。后面一句话。」会把「）。后面一句话。」
+        // 整段吞进链接（2026-10-06 实测）。跟 MyKnowledgeBase 的 public/cjk-autolink.js 同一套规则：
+        // 在第一个中文/全角标点处截断（汉字本身不截，维基百科、百度百科的词条路径里就是汉字），
+        // 截完再按 marked 原本的规则去掉末尾英文标点。
+        // URL_START_RE / BACKPEDAL_RE 跟 marked@15.0.12 源码里的 inline.url / _backpedal 逐字一致。
+        const URL_START_RE = /^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*/i;
+        const CJK_PUNCT_RE = /[　-〿＀-￯‘’“”…—]/;
+        const BACKPEDAL_RE = /(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/;
+        const cjkAutolinkTokenizer = {
+            url(src) {
+                const m = URL_START_RE.exec(src);
+                if (!m) return false; // 交还 marked 原本的规则（邮箱自动链接走那里）
+                let raw = m[0];
+                const cut = raw.search(CJK_PUNCT_RE);
+                if (cut !== -1) raw = raw.slice(0, cut);
+                let prev;
+                do { prev = raw; raw = (BACKPEDAL_RE.exec(raw) || [''])[0]; } while (prev !== raw);
+                if (!/^(?:(?:ftp|https?):\/\/|www\.)[a-zA-Z0-9\-]/i.test(raw)) return false;
+                // text 给原文、不自己转义：marked 15 的 text 渲染器会转义（跟 marked 12 不一样，
+                // MyKnowledgeBase 那份是按 marked 12 写的，那边要自己转义）
+                return { type: 'link', raw, text: raw, href: /^www\./i.test(raw) ? 'http://' + raw : raw, tokens: [{ type: 'text', raw, text: raw }] };
+            }
+        };
+
+        // ================= 编辑预览的行号标记 =================
+        // 光标同步要知道预览里每一块对应源码第几行。原来是渲染完再另外 marked.lexer() 分一次词、
+        // 按「第 i 个 token ↔ 第 i 个子元素」对应着打标——这个一一对应在 HTML 注释、链接定义、
+        // 一段里并排好几个 HTML 标签、脚注时都不成立，后面的定位全部错位；而且那次 lexer 传了
+        // 选项、丢了扩展（公式那类块会切得跟真正渲染时不一样）。
+        // 现在在 marked.parse 自己的 processAllTokens 钩子里，往每个顶层 token 前面插一个空的
+        // <div class="kb-block-mark" data-start-line=…>。一块的范围 = 这个标记到下一个标记之间的元素，
+        // 渲染出几个元素都不影响对应关系。仍然是完整的 marked.parse 流水线，postprocess 里的
+        // DOMPurify 照常生效（这条安全约束见 renderMarkdown 里的说明，不变）。
+        // 只有编辑预览需要标记，阅读视图不插（markBlocks 开关）。
+        // 跟 MyKnowledgeBase 的 public/md-config.js 是同一套算法。
+        let markBlocks = false;
+        let markSrc = '';
+        let markBlocksOut = [];
+        // space 是空行；footnotes 是脚注扩展塞进来的占位 token，它的 raw 是脚注区标题文字，不是源码
+        const UNMARKED_TYPES = new Set(['space', 'footnotes']);
+        function annotateBlocks(tokens) {
+            if (!markBlocks) return tokens;
+            const src = markSrc;
+            const original = tokens.slice();
+            // 必须原地改这个数组：脚注扩展在 walkTokens 里凭「占位 token 在这个数组对象的第 0 位」
+            // 认它、再挪到文末。换成新数组，脚注区会渲染在最上面。也绝不往第 0 位前插东西。
+            tokens.length = 0;
+            let from = 0, line = 0, lineOffset = 0;
+            const lineAt = (offset) => {
+                for (let i = lineOffset; i < offset; i++) if (src.charCodeAt(i) === 10) line++;
+                lineOffset = offset;
+                return line;
+            };
+            for (const token of original) {
+                const raw = token.raw || '';
+                if (UNMARKED_TYPES.has(token.type) || !raw) { tokens.push(token); continue; }
+                let idx = src.indexOf(raw, from);
+                if (idx === -1) idx = from;
+                const startLine = lineAt(idx);
+                const endLine = startLine + Math.max(0, raw.replace(/\n+$/, '').split('\n').length - 1);
+                const index = markBlocksOut.length;
+                markBlocksOut.push({ index, type: token.type, startLine, endLine, offset: idx, token });
+                tokens.push({ type: 'html', block: true, pre: false, raw: '', text: `<div class="kb-block-mark" data-block="${index}" data-start-line="${startLine}" data-end-line="${endLine}"></div>\n` });
+                tokens.push(token);
+                from = idx + raw.length;
+            }
+            return tokens;
+        }
+
         marked.use(
             { gfm: true, breaks: true },
             markedHighlight({
@@ -322,9 +441,17 @@
                     return hljs.highlight(code, { language }).value;
                 }
             }),
-            markedKatex({ throwOnError: false, output: 'html' }),
-            // 安全加固：对 marked 输出的最终 HTML 做 XSS 过滤，防止 .md 文件中夹带的 <script>/onerror 等被执行
-            { hooks: { postprocess: (html) => DOMPurify.sanitize(html, { ADD_ATTR: ['style'] }) } }
+            { extensions: [mathExtension], tokenizer: cjkAutolinkTokenizer },
+            markedFootnote({ description: '脚注', headingClass: 'sr-only', backRefLabel: '返回引用处 {0}' }),
+            markedAlert(),
+            {
+                hooks: {
+                    preprocess(markdown) { markSrc = String(markdown).replace(/\r\n|\r/g, '\n'); return markdown; },
+                    processAllTokens: annotateBlocks,
+                    // 安全加固：对 marked 输出的最终 HTML 做 XSS 过滤，防止 .md 文件中夹带的 <script>/onerror 等被执行
+                    postprocess: (html) => DOMPurify.sanitize(html, { ADD_ATTR: ['style'] })
+                }
+            }
         );
         // Mermaid 图表渲染器（用于 ```mermaid 代码块）
         mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
@@ -374,14 +501,17 @@
             return match ? text.slice(match[0].length) : text;
         }
 
-        // 生成 GitHub 风格的标题锚点 slug，使文档内 [文字](#标题) 形式的跳转链接可用
+        // 生成 GitHub 风格的标题锚点 slug，使文档内 [文字](#标题) 形式的跳转链接可用。
+        // 2026-10-06 改成跟 GitHub 完全一致：原来只去掉 ASCII 标点，「一、概述（重要）」生成的是
+        // 「一、概述（重要）」，GitHub 生成的是「一概述重要」，照 GitHub 习惯写的页内跳转对不上。
+        // SLUG_REMOVE_RE 原样抄自 github-slugger@2.0.0 的 regex.js（GitHub 用的就是这个算法，
+        // ISC 许可，版权 Dan Flettre）；MyKnowledgeBase 的 public/heading-slug.js 是同一份，两站锚点一致。
+        // 规则：转小写 → 删掉 SLUG_REMOVE_RE 命中的字符 → 空格换成 -；重名依次加 -1、-2。
+        const SLUG_REMOVE_RE = /[\0-\x1F!-,\.\/:-@\[-\^`\{-\xA9\xAB-\xB4\xB6-\xB9\xBB-\xBF\xD7\xF7\u02C2-\u02C5\u02D2-\u02DF\u02E5-\u02EB\u02ED\u02EF-\u02FF\u0375\u0378\u0379\u037E\u0380-\u0385\u0387\u038B\u038D\u03A2\u03F6\u0482\u0530\u0557\u0558\u055A-\u055F\u0589-\u0590\u05BE\u05C0\u05C3\u05C6\u05C8-\u05CF\u05EB-\u05EE\u05F3-\u060F\u061B-\u061F\u066A-\u066D\u06D4\u06DD\u06DE\u06E9\u06FD\u06FE\u0700-\u070F\u074B\u074C\u07B2-\u07BF\u07F6-\u07F9\u07FB\u07FC\u07FE\u07FF\u082E-\u083F\u085C-\u085F\u086B-\u089F\u08B5\u08C8-\u08D2\u08E2\u0964\u0965\u0970\u0984\u098D\u098E\u0991\u0992\u09A9\u09B1\u09B3-\u09B5\u09BA\u09BB\u09C5\u09C6\u09C9\u09CA\u09CF-\u09D6\u09D8-\u09DB\u09DE\u09E4\u09E5\u09F2-\u09FB\u09FD\u09FF\u0A00\u0A04\u0A0B-\u0A0E\u0A11\u0A12\u0A29\u0A31\u0A34\u0A37\u0A3A\u0A3B\u0A3D\u0A43-\u0A46\u0A49\u0A4A\u0A4E-\u0A50\u0A52-\u0A58\u0A5D\u0A5F-\u0A65\u0A76-\u0A80\u0A84\u0A8E\u0A92\u0AA9\u0AB1\u0AB4\u0ABA\u0ABB\u0AC6\u0ACA\u0ACE\u0ACF\u0AD1-\u0ADF\u0AE4\u0AE5\u0AF0-\u0AF8\u0B00\u0B04\u0B0D\u0B0E\u0B11\u0B12\u0B29\u0B31\u0B34\u0B3A\u0B3B\u0B45\u0B46\u0B49\u0B4A\u0B4E-\u0B54\u0B58-\u0B5B\u0B5E\u0B64\u0B65\u0B70\u0B72-\u0B81\u0B84\u0B8B-\u0B8D\u0B91\u0B96-\u0B98\u0B9B\u0B9D\u0BA0-\u0BA2\u0BA5-\u0BA7\u0BAB-\u0BAD\u0BBA-\u0BBD\u0BC3-\u0BC5\u0BC9\u0BCE\u0BCF\u0BD1-\u0BD6\u0BD8-\u0BE5\u0BF0-\u0BFF\u0C0D\u0C11\u0C29\u0C3A-\u0C3C\u0C45\u0C49\u0C4E-\u0C54\u0C57\u0C5B-\u0C5F\u0C64\u0C65\u0C70-\u0C7F\u0C84\u0C8D\u0C91\u0CA9\u0CB4\u0CBA\u0CBB\u0CC5\u0CC9\u0CCE-\u0CD4\u0CD7-\u0CDD\u0CDF\u0CE4\u0CE5\u0CF0\u0CF3-\u0CFF\u0D0D\u0D11\u0D45\u0D49\u0D4F-\u0D53\u0D58-\u0D5E\u0D64\u0D65\u0D70-\u0D79\u0D80\u0D84\u0D97-\u0D99\u0DB2\u0DBC\u0DBE\u0DBF\u0DC7-\u0DC9\u0DCB-\u0DCE\u0DD5\u0DD7\u0DE0-\u0DE5\u0DF0\u0DF1\u0DF4-\u0E00\u0E3B-\u0E3F\u0E4F\u0E5A-\u0E80\u0E83\u0E85\u0E8B\u0EA4\u0EA6\u0EBE\u0EBF\u0EC5\u0EC7\u0ECE\u0ECF\u0EDA\u0EDB\u0EE0-\u0EFF\u0F01-\u0F17\u0F1A-\u0F1F\u0F2A-\u0F34\u0F36\u0F38\u0F3A-\u0F3D\u0F48\u0F6D-\u0F70\u0F85\u0F98\u0FBD-\u0FC5\u0FC7-\u0FFF\u104A-\u104F\u109E\u109F\u10C6\u10C8-\u10CC\u10CE\u10CF\u10FB\u1249\u124E\u124F\u1257\u1259\u125E\u125F\u1289\u128E\u128F\u12B1\u12B6\u12B7\u12BF\u12C1\u12C6\u12C7\u12D7\u1311\u1316\u1317\u135B\u135C\u1360-\u137F\u1390-\u139F\u13F6\u13F7\u13FE-\u1400\u166D\u166E\u1680\u169B-\u169F\u16EB-\u16ED\u16F9-\u16FF\u170D\u1715-\u171F\u1735-\u173F\u1754-\u175F\u176D\u1771\u1774-\u177F\u17D4-\u17D6\u17D8-\u17DB\u17DE\u17DF\u17EA-\u180A\u180E\u180F\u181A-\u181F\u1879-\u187F\u18AB-\u18AF\u18F6-\u18FF\u191F\u192C-\u192F\u193C-\u1945\u196E\u196F\u1975-\u197F\u19AC-\u19AF\u19CA-\u19CF\u19DA-\u19FF\u1A1C-\u1A1F\u1A5F\u1A7D\u1A7E\u1A8A-\u1A8F\u1A9A-\u1AA6\u1AA8-\u1AAF\u1AC1-\u1AFF\u1B4C-\u1B4F\u1B5A-\u1B6A\u1B74-\u1B7F\u1BF4-\u1BFF\u1C38-\u1C3F\u1C4A-\u1C4C\u1C7E\u1C7F\u1C89-\u1C8F\u1CBB\u1CBC\u1CC0-\u1CCF\u1CD3\u1CFB-\u1CFF\u1DFA\u1F16\u1F17\u1F1E\u1F1F\u1F46\u1F47\u1F4E\u1F4F\u1F58\u1F5A\u1F5C\u1F5E\u1F7E\u1F7F\u1FB5\u1FBD\u1FBF-\u1FC1\u1FC5\u1FCD-\u1FCF\u1FD4\u1FD5\u1FDC-\u1FDF\u1FED-\u1FF1\u1FF5\u1FFD-\u203E\u2041-\u2053\u2055-\u2070\u2072-\u207E\u2080-\u208F\u209D-\u20CF\u20F1-\u2101\u2103-\u2106\u2108\u2109\u2114\u2116-\u2118\u211E-\u2123\u2125\u2127\u2129\u212E\u213A\u213B\u2140-\u2144\u214A-\u214D\u214F-\u215F\u2189-\u24B5\u24EA-\u2BFF\u2C2F\u2C5F\u2CE5-\u2CEA\u2CF4-\u2CFF\u2D26\u2D28-\u2D2C\u2D2E\u2D2F\u2D68-\u2D6E\u2D70-\u2D7E\u2D97-\u2D9F\u2DA7\u2DAF\u2DB7\u2DBF\u2DC7\u2DCF\u2DD7\u2DDF\u2E00-\u2E2E\u2E30-\u3004\u3008-\u3020\u3030\u3036\u3037\u303D-\u3040\u3097\u3098\u309B\u309C\u30A0\u30FB\u3100-\u3104\u3130\u318F-\u319F\u31C0-\u31EF\u3200-\u33FF\u4DC0-\u4DFF\u9FFD-\u9FFF\uA48D-\uA4CF\uA4FE\uA4FF\uA60D-\uA60F\uA62C-\uA63F\uA673\uA67E\uA6F2-\uA716\uA720\uA721\uA789\uA78A\uA7C0\uA7C1\uA7CB-\uA7F4\uA828-\uA82B\uA82D-\uA83F\uA874-\uA87F\uA8C6-\uA8CF\uA8DA-\uA8DF\uA8F8-\uA8FA\uA8FC\uA92E\uA92F\uA954-\uA95F\uA97D-\uA97F\uA9C1-\uA9CE\uA9DA-\uA9DF\uA9FF\uAA37-\uAA3F\uAA4E\uAA4F\uAA5A-\uAA5F\uAA77-\uAA79\uAAC3-\uAADA\uAADE\uAADF\uAAF0\uAAF1\uAAF7-\uAB00\uAB07\uAB08\uAB0F\uAB10\uAB17-\uAB1F\uAB27\uAB2F\uAB5B\uAB6A-\uAB6F\uABEB\uABEE\uABEF\uABFA-\uABFF\uD7A4-\uD7AF\uD7C7-\uD7CA\uD7FC-\uD7FF\uE000-\uF8FF\uFA6E\uFA6F\uFADA-\uFAFF\uFB07-\uFB12\uFB18-\uFB1C\uFB29\uFB37\uFB3D\uFB3F\uFB42\uFB45\uFBB2-\uFBD2\uFD3E-\uFD4F\uFD90\uFD91\uFDC8-\uFDEF\uFDFC-\uFDFF\uFE10-\uFE1F\uFE30-\uFE32\uFE35-\uFE4C\uFE50-\uFE6F\uFE75\uFEFD-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF3E\uFF40\uFF5B-\uFF65\uFFBF-\uFFC1\uFFC8\uFFC9\uFFD0\uFFD1\uFFD8\uFFD9\uFFDD-\uFFFF]|\uD800[\uDC0C\uDC27\uDC3B\uDC3E\uDC4E\uDC4F\uDC5E-\uDC7F\uDCFB-\uDD3F\uDD75-\uDDFC\uDDFE-\uDE7F\uDE9D-\uDE9F\uDED1-\uDEDF\uDEE1-\uDEFF\uDF20-\uDF2C\uDF4B-\uDF4F\uDF7B-\uDF7F\uDF9E\uDF9F\uDFC4-\uDFC7\uDFD0\uDFD6-\uDFFF]|\uD801[\uDC9E\uDC9F\uDCAA-\uDCAF\uDCD4-\uDCD7\uDCFC-\uDCFF\uDD28-\uDD2F\uDD64-\uDDFF\uDF37-\uDF3F\uDF56-\uDF5F\uDF68-\uDFFF]|\uD802[\uDC06\uDC07\uDC09\uDC36\uDC39-\uDC3B\uDC3D\uDC3E\uDC56-\uDC5F\uDC77-\uDC7F\uDC9F-\uDCDF\uDCF3\uDCF6-\uDCFF\uDD16-\uDD1F\uDD3A-\uDD7F\uDDB8-\uDDBD\uDDC0-\uDDFF\uDE04\uDE07-\uDE0B\uDE14\uDE18\uDE36\uDE37\uDE3B-\uDE3E\uDE40-\uDE5F\uDE7D-\uDE7F\uDE9D-\uDEBF\uDEC8\uDEE7-\uDEFF\uDF36-\uDF3F\uDF56-\uDF5F\uDF73-\uDF7F\uDF92-\uDFFF]|\uD803[\uDC49-\uDC7F\uDCB3-\uDCBF\uDCF3-\uDCFF\uDD28-\uDD2F\uDD3A-\uDE7F\uDEAA\uDEAD-\uDEAF\uDEB2-\uDEFF\uDF1D-\uDF26\uDF28-\uDF2F\uDF51-\uDFAF\uDFC5-\uDFDF\uDFF7-\uDFFF]|\uD804[\uDC47-\uDC65\uDC70-\uDC7E\uDCBB-\uDCCF\uDCE9-\uDCEF\uDCFA-\uDCFF\uDD35\uDD40-\uDD43\uDD48-\uDD4F\uDD74\uDD75\uDD77-\uDD7F\uDDC5-\uDDC8\uDDCD\uDDDB\uDDDD-\uDDFF\uDE12\uDE38-\uDE3D\uDE3F-\uDE7F\uDE87\uDE89\uDE8E\uDE9E\uDEA9-\uDEAF\uDEEB-\uDEEF\uDEFA-\uDEFF\uDF04\uDF0D\uDF0E\uDF11\uDF12\uDF29\uDF31\uDF34\uDF3A\uDF45\uDF46\uDF49\uDF4A\uDF4E\uDF4F\uDF51-\uDF56\uDF58-\uDF5C\uDF64\uDF65\uDF6D-\uDF6F\uDF75-\uDFFF]|\uD805[\uDC4B-\uDC4F\uDC5A-\uDC5D\uDC62-\uDC7F\uDCC6\uDCC8-\uDCCF\uDCDA-\uDD7F\uDDB6\uDDB7\uDDC1-\uDDD7\uDDDE-\uDDFF\uDE41-\uDE43\uDE45-\uDE4F\uDE5A-\uDE7F\uDEB9-\uDEBF\uDECA-\uDEFF\uDF1B\uDF1C\uDF2C-\uDF2F\uDF3A-\uDFFF]|\uD806[\uDC3B-\uDC9F\uDCEA-\uDCFE\uDD07\uDD08\uDD0A\uDD0B\uDD14\uDD17\uDD36\uDD39\uDD3A\uDD44-\uDD4F\uDD5A-\uDD9F\uDDA8\uDDA9\uDDD8\uDDD9\uDDE2\uDDE5-\uDDFF\uDE3F-\uDE46\uDE48-\uDE4F\uDE9A-\uDE9C\uDE9E-\uDEBF\uDEF9-\uDFFF]|\uD807[\uDC09\uDC37\uDC41-\uDC4F\uDC5A-\uDC71\uDC90\uDC91\uDCA8\uDCB7-\uDCFF\uDD07\uDD0A\uDD37-\uDD39\uDD3B\uDD3E\uDD48-\uDD4F\uDD5A-\uDD5F\uDD66\uDD69\uDD8F\uDD92\uDD99-\uDD9F\uDDAA-\uDEDF\uDEF7-\uDFAF\uDFB1-\uDFFF]|\uD808[\uDF9A-\uDFFF]|\uD809[\uDC6F-\uDC7F\uDD44-\uDFFF]|[\uD80A\uD80B\uD80E-\uD810\uD812-\uD819\uD824-\uD82B\uD82D\uD82E\uD830-\uD833\uD837\uD839\uD83D\uD83F\uD87B-\uD87D\uD87F\uD885-\uDB3F\uDB41-\uDBFF][\uDC00-\uDFFF]|\uD80D[\uDC2F-\uDFFF]|\uD811[\uDE47-\uDFFF]|\uD81A[\uDE39-\uDE3F\uDE5F\uDE6A-\uDECF\uDEEE\uDEEF\uDEF5-\uDEFF\uDF37-\uDF3F\uDF44-\uDF4F\uDF5A-\uDF62\uDF78-\uDF7C\uDF90-\uDFFF]|\uD81B[\uDC00-\uDE3F\uDE80-\uDEFF\uDF4B-\uDF4E\uDF88-\uDF8E\uDFA0-\uDFDF\uDFE2\uDFE5-\uDFEF\uDFF2-\uDFFF]|\uD821[\uDFF8-\uDFFF]|\uD823[\uDCD6-\uDCFF\uDD09-\uDFFF]|\uD82C[\uDD1F-\uDD4F\uDD53-\uDD63\uDD68-\uDD6F\uDEFC-\uDFFF]|\uD82F[\uDC6B-\uDC6F\uDC7D-\uDC7F\uDC89-\uDC8F\uDC9A-\uDC9C\uDC9F-\uDFFF]|\uD834[\uDC00-\uDD64\uDD6A-\uDD6C\uDD73-\uDD7A\uDD83\uDD84\uDD8C-\uDDA9\uDDAE-\uDE41\uDE45-\uDFFF]|\uD835[\uDC55\uDC9D\uDCA0\uDCA1\uDCA3\uDCA4\uDCA7\uDCA8\uDCAD\uDCBA\uDCBC\uDCC4\uDD06\uDD0B\uDD0C\uDD15\uDD1D\uDD3A\uDD3F\uDD45\uDD47-\uDD49\uDD51\uDEA6\uDEA7\uDEC1\uDEDB\uDEFB\uDF15\uDF35\uDF4F\uDF6F\uDF89\uDFA9\uDFC3\uDFCC\uDFCD]|\uD836[\uDC00-\uDDFF\uDE37-\uDE3A\uDE6D-\uDE74\uDE76-\uDE83\uDE85-\uDE9A\uDEA0\uDEB0-\uDFFF]|\uD838[\uDC07\uDC19\uDC1A\uDC22\uDC25\uDC2B-\uDCFF\uDD2D-\uDD2F\uDD3E\uDD3F\uDD4A-\uDD4D\uDD4F-\uDEBF\uDEFA-\uDFFF]|\uD83A[\uDCC5-\uDCCF\uDCD7-\uDCFF\uDD4C-\uDD4F\uDD5A-\uDFFF]|\uD83B[\uDC00-\uDDFF\uDE04\uDE20\uDE23\uDE25\uDE26\uDE28\uDE33\uDE38\uDE3A\uDE3C-\uDE41\uDE43-\uDE46\uDE48\uDE4A\uDE4C\uDE50\uDE53\uDE55\uDE56\uDE58\uDE5A\uDE5C\uDE5E\uDE60\uDE63\uDE65\uDE66\uDE6B\uDE73\uDE78\uDE7D\uDE7F\uDE8A\uDE9C-\uDEA0\uDEA4\uDEAA\uDEBC-\uDFFF]|\uD83C[\uDC00-\uDD2F\uDD4A-\uDD4F\uDD6A-\uDD6F\uDD8A-\uDFFF]|\uD83E[\uDC00-\uDFEF\uDFFA-\uDFFF]|\uD869[\uDEDE-\uDEFF]|\uD86D[\uDF35-\uDF3F]|\uD86E[\uDC1E\uDC1F]|\uD873[\uDEA2-\uDEAF]|\uD87A[\uDFE1-\uDFFF]|\uD87E[\uDE1E-\uDFFF]|\uD884[\uDF4B-\uDFFF]|\uDB40[\uDC00-\uDCFF\uDDF0-\uDFFF]/g;
         function slugify(text, usedSlugs) {
-            let slug = String(text).trim().toLowerCase()
-                .replace(/[!"#%&'()*+,./:;<=>?@[\]^`{|}~]/g, '')
-                .replace(/\s+/g, '-');
-            if (!slug) slug = 'section';
-            let unique = slug, i = 1;
-            while (usedSlugs.has(unique)) unique = `${slug}-${i++}`;
+            const base = String(text).toLowerCase().replace(SLUG_REMOVE_RE, '').replace(/ /g, '-') || 'section';
+            let unique = base, i = 1;
+            while (usedSlugs.has(unique)) unique = `${base}-${i++}`;
             usedSlugs.add(unique);
             return unique;
         }
@@ -451,41 +581,32 @@
         const btnSort = document.getElementById('btn-sort');
         
         // ================= UI 状态机控制 =================
-        async function switchState(newState) {
-            currentState = newState;
-            const isMobile = window.innerWidth < 768; 
-            
-            vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
-            btnFabToc.classList.add('hidden'); 
+        // 顶栏按钮、悬浮目录按钮、目录侧栏这些「外壳」：只跟当前状态和屏幕宽度有关，跟内容无关。
+        // 单独拆出来，是因为窗口宽度跨过 768 断点时只该刷新外壳（见下面的 resize 监听）。
+        function applyChrome(state) {
+            const isMobile = window.innerWidth < 768;
+            btnFabToc.classList.add('hidden');
             Object.values(headerUI).forEach(el => { if(el && el.id !== 'btn-hamburger') el.classList.add('hidden'); });
-            
-            if (newState === 'home') {
-                vHome.classList.remove('hidden');
+
+            if (state === 'home') {
                 headerUI.headerLogo.classList.remove('hidden');
-                headerUI.btnHomeSample.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden'); 
+                headerUI.btnHomeSample.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
                 tocSidebar.classList.add('collapsed');
-                
-            } else if (newState === 'read') {
-                vRead.classList.remove('hidden');
+            } else if (state === 'read') {
                 headerUI.btnBack.classList.remove('hidden');
                 headerUI.headerTitle.classList.remove('hidden'); headerUI.headerTitle.innerText = currentFile.title;
-                
                 if(isMobile) {
                     headerUI.btnReadMore.classList.remove('hidden');
-                    btnFabToc.classList.remove('hidden'); 
+                    btnFabToc.classList.remove('hidden');
                 } else {
                     headerUI.btnReadCopy.classList.remove('hidden');
                     headerUI.btnReadEdit.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
                     headerUI.btnFontDec.classList.remove('hidden'); headerUI.btnFontInc.classList.remove('hidden');
                     headerUI.btnFontReset.classList.remove('hidden');
                     headerUI.btnLinenumToggle.classList.remove('hidden');
+                    tocSidebar.classList.remove('collapsed');
                 }
-                await renderMarkdown(currentFile.content, readerContent);
-                generateTOC();
-                if (!isMobile) tocSidebar.classList.remove('collapsed');
-                
-            } else if (newState === 'edit') {
-                vEdit.classList.remove('hidden');
+            } else if (state === 'edit') {
                 headerUI.headerTitle.classList.remove('hidden'); headerUI.headerTitle.innerText = "编辑: " + currentFile.title;
                 if(isMobile) {
                     headerUI.btnBack.classList.remove('hidden');
@@ -496,6 +617,18 @@
                     headerUI.btnEditSave.classList.remove('hidden'); headerUI.btnTheme.classList.remove('hidden');
                 }
                 tocSidebar.classList.add('collapsed');
+            }
+        }
+
+        async function switchState(newState) {
+            currentState = newState;
+            vHome.classList.add('hidden'); vRead.classList.add('hidden'); vEdit.classList.add('hidden');
+            ({ home: vHome, read: vRead, edit: vEdit })[newState].classList.remove('hidden');
+            applyChrome(newState);
+
+            if (newState === 'read') {
+                if (await renderMarkdown(currentFile.content, readerContent)) generateTOC();
+            } else if (newState === 'edit') {
                 originalContent = currentFile.content;
                 editorTextarea.value = currentFile.content; await renderMarkdown(currentFile.content, editorPreview);
             }
@@ -883,98 +1016,50 @@
         });
         
         // ================= Markdown 渲染及其他逻辑 =================
+        // 每个目标容器一个渲染序号。renderMarkdown 里有 await（按需加载语言包、Mermaid），
+        // 连续打字时前一次可能还没跑完下一次就开始了；没有这个序号的话，先开始、后结束的那次
+        // 会把旧内容盖回预览上（典型场景：刚敲出 ```kotlin 触发下载语言包，下一个字符的渲染
+        // 先完成，语言包到了之后上一次的渲染再把旧文本写回去）。
+        const renderSeqs = new WeakMap();
+
+        // 返回 false 表示这次渲染已经被更新的一次取代、中途放弃了
         async function renderMarkdown(text, target) {
+            const seq = (renderSeqs.get(target) || 0) + 1;
+            renderSeqs.set(target, seq);
+            const stale = () => renderSeqs.get(target) !== seq;
             const body = stripFrontMatter(text);
             await ensureCodeLanguagesLoaded(body);
-            target.innerHTML = marked.parse(body);
+            if (stale()) return false;
 
-            // 编辑光标定位同步：给渲染结果里每个顶层block元素标一个data-start-line
-            // （对应它在源码里的起始行号），供 scrollPreviewToCursor() 用来找光标
-            // 当前所在行该对应预览区哪一块。这里刻意不用 marked.lexer()+
-            // marked.parser([token]) 逐block单独渲染的做法——marked.use()注册的
-            // postprocess钩子（DOMPurify.sanitize，防止.md文件里夹带的<script>/
-            // onerror被执行）只在marked.parse()这条完整流水线上生效，marked.parser()
-            // 单独调用不会触发这个钩子（实测验证过：同一段带onerror的恶意内容，
-            // marked.parse()正确剥离，marked.lexer()+marked.parser()逐block渲染
-            // 会原样漏过去）。改成安全的做法：先用上面已经过完整流水线（含
-            // 净化）产出的target.innerHTML不动，只用marked.lexer()做纯粹的分词
-            // （不产出任何HTML，只是为了拿到每个顶层block在源码里的起始行号），
-            // 再按顺序跟target的顶层子元素一一对应着打标——marked自己解析时
-            // 顶层block token（跳过不产出内容的'space'空行token）和顶层渲染
-            // 出来的DOM子元素在数量和顺序上是严格一一对应的，不需要重新生成
-            // 或改动任何HTML内容，只是往已经净化过的现成DOM上加几个数字属性，
-            // 不会重新引入任何XSS风险。
+            // 安全约束（不能改）：产出 HTML 的永远是完整的 marked.parse()——marked.use() 注册的
+            // postprocess 钩子（DOMPurify.sanitize，防止 .md 文件里夹带的 <script>/onerror 被执行）
+            // 只在这条完整流水线上生效。marked.lexer()+marked.parser([token]) 逐块渲染不会触发
+            // 这个钩子（实测过：同一段带 onerror 的内容，marked.parse() 正确剥离，逐块渲染原样漏过去）。
             //
-            // 2026-08-02 用户实测反馈"左边点光标右边定位非常不精准"。真实原因不是
-            // 缓存也不是没生效，而是**只给顶层block打标，粒度太粗**：用户的文档
-            // （判断题整理这一类）一个章节的十几道题在markdown里是一个有序列表、
-            // 也就是一个block，整篇175行源码只产生32个可定位点；实测把光标依次
-            // 放在同一个列表的12行上，预览滚动位置一模一样（都是2539），等于在
-            // 章节内部怎么点预览都纹丝不动。现在改成递归下钻：列表项、嵌套列表项、
-            // 表格行都各自打上自己的起始行号，粒度细到"源码一行"。下钻同样只读
-            // token 的 raw 算行号，一行 HTML 都不重新生成，上面那条安全约束不变。
-            const lineTrackingTokens = marked.lexer(body, { gfm: true, breaks: true }).filter(t => t.type !== 'space');
-            const startLineAt = (offset) => (body.slice(0, offset).match(/\n/g) || []).length;
+            // 编辑预览要做光标同步，需要知道每一块对应源码第几行：打开 markBlocks，让
+            // processAllTokens 钩子在每个顶层块前插一个空的行号标记（见上面 annotateBlocks 的说明）。
+            // 标记也在 marked.parse 里生成、同样经过 DOMPurify，不引入任何未净化的 HTML。
+            const isPreview = target === editorPreview;
+            markBlocks = isPreview;
+            markBlocksOut = [];
+            let html;
+            try { html = marked.parse(body); } finally { markBlocks = false; }
+            const blocks = markBlocksOut;
+            target.innerHTML = html;
 
-            // 按 raw 在源码里的出现位置定位每个 token。cursor 是"从哪里开始往后找"
-            // 的游标，必须严格随文档顺序推进——否则内容完全相同的两行（判断题这种
-            // 高度重复的文档里很常见）会被一起匹配到最前面那一处，行号全部算错。
-            function tagList(items, listEl, listOffset) {
-                let cursor = listOffset;
-                items.forEach((item, j) => {
-                    const raw = item.raw || '';
-                    let idx = raw ? body.indexOf(raw, cursor) : cursor;
-                    if (idx === -1) idx = cursor;
-                    const li = listEl.children[j];
-                    if (li) {
-                        li.dataset.startLine = startLineAt(idx);
-                        // 嵌套列表：item.tokens 里 type==='list' 的那些，按顺序对应
-                        // 这个 li 底下的 ul/ol 子元素，继续往下钻。
-                        const nestedEls = Array.from(li.children).filter(c => c.tagName === 'UL' || c.tagName === 'OL');
-                        (item.tokens || []).filter(t => t.type === 'list').forEach((nt, k) => {
-                            if (nestedEls[k] && Array.isArray(nt.items)) tagList(nt.items, nestedEls[k], idx);
-                        });
-                    }
-                    cursor = idx + raw.length;
-                });
-            }
+            // 2026-08-02 用户实测反馈"左边点光标右边定位非常不精准"：只给顶层块打标粒度太粗，
+            // 一个章节的十几道题是一个列表、也就是一个块。所以列表项、嵌套列表项、表格行各自
+            // 再打上起始行号，粒度细到"源码一行"。只读 token 的 raw 算行号，不生成任何 HTML。
+            if (isPreview) tagBlockDetails(target, blocks, markSrc);
 
-            function tagTable(tableEl, tableOffset) {
-                // GFM 表格的源码结构是固定的：第1行表头、第2行分隔线（|---|---|）、
-                // 之后每行一条数据行，所以行号直接按顺序推算即可，不用再去 body 里
-                // 搜（表格单元格内容重复率高，去搜反而容易匹配错位置）。
-                const base = startLineAt(tableOffset);
-                const headRow = tableEl.querySelector('thead tr');
-                if (headRow) headRow.dataset.startLine = base;
-                tableEl.querySelectorAll('tbody tr').forEach((tr, i) => { tr.dataset.startLine = base + 2 + i; });
-            }
-
-            let searchFrom = 0;
-            lineTrackingTokens.forEach((token, i) => {
-                const raw = token.raw || '';
-                let idx = raw ? body.indexOf(raw, searchFrom) : searchFrom;
-                if (idx === -1) idx = searchFrom;
-                const startLine = startLineAt(idx);
-                const el = target.children[i];
-                if (el) {
-                    el.dataset.startLine = startLine;
-                    // 顺便记下这个block在源码里占到第几行。像代码块这种内部再也
-                    // 没有更细粒度元素可选的整块内容（一个60行的代码块渲染出来
-                    // 就是一个<pre>），只有知道它的行号区间，才能按"光标在这块的
-                    // 第几行"把预览滚到块内部对应的位置，而不是一律滚到块开头。
-                    el.dataset.endLine = startLine + Math.max(0, raw.replace(/\n+$/, '').split('\n').length - 1);
-                    if (token.type === 'list' && Array.isArray(token.items)) tagList(token.items, el, idx);
-                    else if (token.type === 'table') tagTable(el, idx);
-                }
-                searchFrom = idx + raw.length;
-            });
-
-            // 标题锚点：使用 GitHub 风格 slug，支持文档内 [文字](#标题) 跳转
+            // 标题锚点：使用 GitHub 风格 slug，支持文档内 [文字](#标题) 跳转。
+            // 脚注区自带的「脚注」标题已经有 id（脚注链接靠它），不动。
             const usedSlugs = new Set();
-            target.querySelectorAll('h1, h2, h3, h4').forEach((heading) => {
+            target.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+                if (heading.closest('.footnotes')) return;
                 heading.id = slugify(heading.textContent, usedSlugs);
             });
-            
+
             // 代码块复制按钮：用外层 wrapper 承载按钮，避免 pre 横向滚动时按钮跟着移动
             target.querySelectorAll('pre code').forEach((block) => {
                 const pre = block.parentNode;
@@ -1012,6 +1097,8 @@
                     const graph = document.createElement('div');
                     graph.className = 'mermaid';
                     graph.textContent = block.textContent;
+                    // 记下源码：切换深色/浅色时要按新主题重画（见 setTheme）
+                    graph.dataset.source = block.textContent;
                     
                     wrapper.appendChild(graph);
                     const copyBtn = codeWrapper.querySelector('.copy-code-btn');
@@ -1019,13 +1106,87 @@
                     codeWrapper.replaceWith(wrapper);
                 });
                 mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
-                await mermaid.run({ nodes: target.querySelectorAll('.mermaid') });
+                if (!stale()) await mermaid.run({ nodes: target.querySelectorAll('.mermaid') });
             }
+            return !stale();
         }
         
+        // 一个行号标记管辖的元素：从它后面一个开始，到下一个标记为止
+        function blockElements(mark) {
+            const els = [];
+            for (let el = mark.nextElementSibling; el && !el.classList.contains('kb-block-mark'); el = el.nextElementSibling) els.push(el);
+            return els;
+        }
+
+        function tagBlockDetails(target, blocks, src) {
+            // 按 raw 在源码里的出现位置定位每个列表项。cursor 是"从哪里开始往后找"的游标，
+            // 必须严格随文档顺序推进——否则内容完全相同的两行（判断题这种高度重复的文档里
+            // 很常见）会被一起匹配到最前面那一处，行号全部算错。
+            function tagList(items, listEl, listOffset) {
+                let cursor = listOffset;
+                items.forEach((item, j) => {
+                    const raw = item.raw || '';
+                    let idx = raw ? src.indexOf(raw, cursor) : cursor;
+                    if (idx === -1) idx = cursor;
+                    const li = listEl.children[j];
+                    if (li && li.tagName === 'LI') {
+                        li.dataset.startLine = (src.slice(0, idx).match(/\n/g) || []).length;
+                        // 嵌套列表：item.tokens 里 type==='list' 的那些，按顺序对应这个 li 底下的 ul/ol
+                        const nestedEls = Array.from(li.children).filter(c => c.tagName === 'UL' || c.tagName === 'OL');
+                        (item.tokens || []).filter(t => t.type === 'list').forEach((nt, k) => {
+                            if (nestedEls[k] && Array.isArray(nt.items)) tagList(nt.items, nestedEls[k], idx);
+                        });
+                    }
+                    cursor = idx + raw.length;
+                });
+            }
+            // GFM 表格的源码结构是固定的：第1行表头、第2行分隔线、之后每行一条数据行，
+            // 行号直接按顺序推算（单元格内容重复率高，去源码里搜反而容易匹配错位置）
+            function tagTable(tableEl, startLine) {
+                const headRow = tableEl.querySelector('thead tr');
+                if (headRow) headRow.dataset.startLine = startLine;
+                tableEl.querySelectorAll('tbody tr').forEach((tr, i) => { tr.dataset.startLine = startLine + 2 + i; });
+            }
+            target.querySelectorAll('.kb-block-mark').forEach((mark) => {
+                const block = blocks[Number(mark.dataset.block)];
+                const first = block && blockElements(mark)[0];
+                if (!first) return;
+                if (block.type === 'list' && /^(UL|OL)$/.test(first.tagName) && Array.isArray(block.token.items)) tagList(block.token.items, first, block.offset);
+                else if (block.type === 'table' && first.tagName === 'TABLE') tagTable(first, block.startLine);
+            });
+        }
+
+        // 源码第 line 行 → 预览里的定位点（整块、列表项或表格行）。
+        // querySelectorAll 返回文档顺序，文档顺序下起始行号单调不减（标记在它那块内容前面、
+        // 父列表项 <= 子项），所以"取最后一个 <= 光标行"可以遇到更大的就 break。
+        // 渲染不出任何元素的块（链接定义、HTML 注释、脚注定义）没有位置可去，跳过，落到前一个点上。
+        function locatePreviewLine(container, line) {
+            let hit = null;
+            for (const point of container.querySelectorAll('[data-start-line]')) {
+                if (Number(point.dataset.startLine) > line) break;
+                if (point.classList.contains('kb-block-mark') && !blockElements(point).length) continue;
+                hit = point;
+            }
+            if (!hit) hit = Array.from(container.querySelectorAll('.kb-block-mark')).find(m => blockElements(m).length) || null;
+            if (!hit) return null;
+            let flash, top, height;
+            if (hit.classList.contains('kb-block-mark')) {
+                flash = blockElements(hit);
+                const first = flash[0].getBoundingClientRect(), last = flash[flash.length - 1].getBoundingClientRect();
+                top = first.top; height = Math.max(0, last.bottom - first.top);
+            } else {
+                flash = [hit];
+                const r = hit.getBoundingClientRect();
+                top = r.top; height = r.height;
+            }
+            return { top, height, startLine: Number(hit.dataset.startLine), endLine: Number(hit.dataset.endLine), flash };
+        }
+
+
         function generateTOC() {
             tocContent.innerHTML = '';
-            const headings = readerContent.querySelectorAll('h1, h2, h3, h4');
+            // 脚注区自带一个读屏用的「脚注」标题（视觉上藏起来了），不进目录
+            const headings = Array.from(readerContent.querySelectorAll('h1, h2, h3, h4')).filter(h => !h.closest('.footnotes'));
             if(headings.length === 0) return tocContent.innerHTML = '<div style="padding:20px;color:#888;">暂无目录</div>';
             headings.forEach(h => {
                 const link = document.createElement('a'); link.href = `#${h.id}`; link.className = `toc-link toc-${h.tagName.toLowerCase()}`; link.innerText = h.innerText;
@@ -1034,61 +1195,48 @@
             });
         }
         
-        function flashHighlight(el) {
-            if (!el) return;
-            el.classList.remove('sync-highlight');
-            void el.offsetWidth; // force reflow so re-adding the class restarts the animation
-            el.classList.add('sync-highlight');
-            setTimeout(() => el.classList.remove('sync-highlight'), 900);
+        function flashHighlight(els) {
+            editorPreview.querySelectorAll('.sync-highlight').forEach(n => n.classList.remove('sync-highlight'));
+            if (!els || !els.length) return;
+            void els[0].offsetWidth; // force reflow so re-adding the class restarts the animation
+            els.forEach(el => el.classList.add('sync-highlight'));
+            setTimeout(() => els.forEach(el => el.classList.remove('sync-highlight')), 900);
         }
 
         function scrollPreviewToCursor() {
-            // 用 querySelectorAll 而不是只看 editorPreview.children：现在列表项、
-            // 嵌套列表项、表格行也各自带了 data-start-line（见 renderMarkdown 里的
-            // 说明），只收顶层子元素的话粒度还是退回到"一个列表算一个点"。
-            // querySelectorAll 返回的是文档顺序，而文档顺序下 data-start-line 是
-            // 单调不减的（父元素的起始行 <= 它第一个子元素的起始行），所以下面
-            // "取最后一个 <= 光标行"的循环配合 break 提前退出依然成立。
-            const blocks = Array.from(editorPreview.querySelectorAll('[data-start-line]'));
-            if (blocks.length === 0) return;
-            const cursorLine = (editorTextarea.value.slice(0, editorTextarea.selectionStart).match(/\n/g) || []).length;
-            let target = blocks[0];
-            for (const block of blocks) {
-                if (Number(block.dataset.startLine) <= cursorLine) target = block; else break;
-            }
-            // 原来用的是 target.scrollIntoView({block:'center'})，有三个问题：一是它
-            // 会连带滚动所有可滚动祖先（包括页面本身）；二是目标比可视区还高时
-            // （比如一整段很长的代码块）"居中"会把它的开头顶到可视区上方去，反而
-            // 看不到光标所在的位置；三是 center 本身就不是用户要的落点——用户明确
-            // 反馈"光标那一行在右边应该定位到最上面，不是停在中间"，参照的是他自己
-            // 另一个项目 MyKnowledgeBase 里同名功能的做法（目标顶边对齐容器顶边、
-            // 留一点呼吸间距）。所以改成直接算 .preview-pane（真正带 overflow-y:auto
-            // 的那一层）该滚多少，统一顶部对齐。
+            const value = editorTextarea.value;
+            // 预览渲染的是去掉 YAML front matter 之后的正文（stripFrontMatter），行号是按正文算的；
+            // 光标行号却是按整个编辑框算的。原来没扣掉这一段，带 front matter 的文档光标同步
+            // 会整体错开 front matter 那么多行（2026-10-06 发现）。
+            const fmLength = value.length - stripFrontMatter(value).length;
+            const fmLines = (value.slice(0, fmLength).match(/\n/g) || []).length;
+            const cursorLine = (value.slice(0, editorTextarea.selectionStart).match(/\n/g) || []).length - fmLines;
+            const hit = locatePreviewLine(editorPreview, cursorLine);
+            if (!hit) return;
+            // 顶部对齐（不是 scrollIntoView center）：用户明确反馈"光标那一行在右边应该定位到最上面"，
+            // 参照的是 MyKnowledgeBase 里同名功能（目标顶边对齐容器顶边、留一点呼吸间距）。
+            // 直接算 .preview-pane（真正带 overflow-y:auto 的那一层）该滚多少，不连带滚动页面本身。
             const TOP_GAP = 12; // 跟 MyKnowledgeBase 的 scrollPreviewToCursor 保持同一个数值
             const pane = editorPreview.closest('.preview-pane') || editorPreview.parentElement;
             if (!pane) return;
             const paneRect = pane.getBoundingClientRect();
-            const rect = target.getBoundingClientRect();
-            // 目标比可视区还高时（长代码块、超长段落这种块内部没有更细元素可选的
-            // 情况），不能直接拿块的顶边对齐——那样在一个60行的代码块里点第50行，
-            // 看到的还是第1行，跟没定位一样。用 data-end-line 按"光标在这块的第几
-            // 行"在块内部按比例插值，把光标那一行本身顶到最上面。
-            let anchorTop = rect.top;
-            if (rect.height >= paneRect.height) {
-                const start = Number(target.dataset.startLine);
-                const end = Number(target.dataset.endLine);
-                const span = Number.isFinite(end) && end > start ? end - start : 0;
-                const ratio = span > 0 ? Math.min(1, Math.max(0, (cursorLine - start) / span)) : 0;
-                anchorTop = rect.top + ratio * rect.height;
+            // 目标比可视区还高时（长代码块、超长段落这种块内部没有更细元素可选的情况），
+            // 按"光标在这块的第几行"在块内部按比例插值，把光标那一行本身顶到最上面。
+            let anchorTop = hit.top;
+            if (hit.height >= paneRect.height) {
+                const span = Number.isFinite(hit.endLine) && hit.endLine > hit.startLine ? hit.endLine - hit.startLine : 0;
+                const ratio = span > 0 ? Math.min(1, Math.max(0, (cursorLine - hit.startLine) / span)) : 0;
+                anchorTop = hit.top + ratio * hit.height;
             }
             pane.scrollTop += anchorTop - paneRect.top - TOP_GAP;
-            flashHighlight(target);
+            flashHighlight(hit.flash);
         }
 
         const CURSOR_MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
         editorTextarea.addEventListener('click', scrollPreviewToCursor);
         editorTextarea.addEventListener('keyup', e => { if (CURSOR_MOVE_KEYS.has(e.key)) scrollPreviewToCursor(); });
-        editorTextarea.addEventListener('input', async e => { await renderMarkdown(e.target.value, editorPreview); scrollPreviewToCursor(); });
+        // 只有没被后来的渲染取代的那一次才去定位，免得旧的那次跑完把预览滚回旧位置
+        editorTextarea.addEventListener('input', async e => { if (await renderMarkdown(e.target.value, editorPreview)) scrollPreviewToCursor(); });
 
         document.getElementById('menu-new').onclick = () => { const title = prompt("新文档名称：", "未命名文档");
         if (title) { currentFile = { id: Date.now().toString(), title, content: `# ${title}\n\n` }; saveToCurrentFolder(currentFile); closeDrawer(); switchState('edit'); } };
@@ -1097,7 +1245,18 @@
         
         function toggleTheme() { setTheme(document.body.getAttribute('data-theme') !== 'dark'); }
         headerUI.btnTheme.onclick = toggleTheme;
-        window.onresize = () => switchState(currentState);
+        // 原来是 window.onresize = () => switchState(currentState)：每次窗口尺寸变化都整个重走一遍
+        // 状态切换——编辑状态下会把编辑框重置成 currentFile.content，**没保存的修改全部丢失**
+        // （2026-10-06 实测：手机转屏、电脑拖窗口大小、软键盘把视口挤小都会触发）；阅读状态下也是
+        // 每一帧都把整篇重新渲染一遍。真正需要随宽度变的只有顶栏按钮和目录栏，而且只在跨过 768
+        // 断点的那一下才变，所以只在跨断点时刷新外壳，不碰内容。
+        let lastIsMobile = window.innerWidth < 768;
+        window.addEventListener('resize', () => {
+            const isMobile = window.innerWidth < 768;
+            if (isMobile === lastIsMobile) return;
+            lastIsMobile = isMobile;
+            applyChrome(currentState);
+        });
 
         // ================= 阅读区字号缩放（0.8~1.4，步进0.1，存到 localStorage） =================
         let mdFontScale = parseFloat(localStorage.getItem('md-font-scale')) || 1;
@@ -1130,7 +1289,17 @@
 
         function setTheme(isDark) { document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); headerUI.btnTheme.innerHTML = isDark ?
         '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>'; localStorage.setItem('md-theme', isDark ? 'dark' : 'light'); document.getElementById('md-style').href = `https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-${isDark ? 'dark' : 'light'}.min.css`;
-        document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; }
+        document.getElementById('hljs-style').href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${isDark ? 'github-dark' : 'github'}.min.css`; 
+            rerenderMermaid(); }
+        // 切换深色/浅色后，已经画好的 Mermaid 图要按新主题重画，不然深色背景上留着一张浅色主题的图。
+        // renderMarkdown 画图时把源码记在了 data-source 上。
+        function rerenderMermaid() {
+            const graphs = Array.from(document.querySelectorAll('.mermaid[data-source]'));
+            if (!graphs.length) return;
+            graphs.forEach(g => { g.removeAttribute('data-processed'); g.textContent = g.dataset.source; });
+            mermaid.initialize({ startOnLoad: false, theme: document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'default' });
+            mermaid.run({ nodes: graphs }).catch(err => console.error('Mermaid 重画失败:', err));
+        }
         const savedTheme = localStorage.getItem('md-theme');
         setTheme(savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches));
         
