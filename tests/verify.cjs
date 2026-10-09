@@ -22,7 +22,12 @@ function serve(root) {
     return new Promise(res => {
         const srv = http.createServer((q, s) => {
             const u = new URL(q.url, 'http://x');
-            const f = path.join(root, u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname));
+            let rel; try { rel = decodeURIComponent(u.pathname); } catch (_) { s.writeHead(400); return s.end('400'); }
+            // 路径里有 0 字节时 fs.readFile 会同步抛错、把整个测试进程带崩，先挡掉
+            if (rel.includes('\0')) { s.writeHead(400); return s.end('400'); }
+            const f = path.resolve(root, '.' + (rel === '/' ? '/index.html' : rel));
+            // 只许读被测目录里的文件：挡住 /../ 、%2e%2e 这类跳出去读本机别的文件的请求
+            if (f !== root && !f.startsWith(root + path.sep)) { s.writeHead(403); return s.end('403'); }
             fs.readFile(f, (e, d) => {
                 if (e) { s.writeHead(404); return s.end('404'); }
                 s.writeHead(200, { 'content-type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream' });
@@ -56,7 +61,7 @@ async function reset(c, setupJs) {
     await c.goto(BASE);
     await c.ev(`localStorage.clear(); ${setupJs || ''}; true`);
     await c.goto(BASE);
-    const ok = await waitFor(c, "typeof switchState === 'function' && !!window.mermaid && !!window.katex && document.querySelectorAll('#history-list .folder-group').length > 0", 30000);
+    const ok = await waitFor(c, "typeof switchState === 'function' && !!window.mermaid && !!window.katex && typeof drawerOpen === 'boolean' && document.getElementById('view-home') && !document.getElementById('view-home').classList.contains('hidden')", 30000);
     if (!ok) throw new Error('页面没准备好');
     await c.ev(INSTRUMENT);
     c.errors.length = 0;
@@ -356,10 +361,10 @@ async function caseRun(name, fn) {
     await caseRun('O-7 侧边栏搜索', async () => {
         await reset(m, dbJs([{ id: 'a', title: '苹果', content: '# 苹果\n红色的水果' }, { id: 'b', title: '香蕉', content: '# 香蕉\n黄色的，跟苹果不一样' }, { id: 'c', title: '葡萄', content: '# 葡萄' }]));
         await m.ev("document.getElementById('btn-hamburger').click()"); await sleep(300);
-        await m.ev("{ const i = document.getElementById('drawer-search-input'); i.value = '苹果'; i.dispatchEvent(new Event('input')); }"); await sleep(200);
+        await m.ev("{ const i = document.getElementById('drawer-search-input'); i.value = '苹果'; i.dispatchEvent(new Event('input')); }"); await waitFor(m, "document.querySelectorAll('#history-list .history-name').length === 2", 3000);
         const names = await m.ev("[...document.querySelectorAll('#history-list .history-name')].map(e => e.textContent)");
         check('按标题和内容都能搜到，标题命中的排前面', J(names) === J(['苹果', '香蕉']), names);
-        await m.ev("{ const i = document.getElementById('drawer-search-input'); i.value = '没有这个'; i.dispatchEvent(new Event('input')); }"); await sleep(200);
+        await m.ev("{ const i = document.getElementById('drawer-search-input'); i.value = '没有这个'; i.dispatchEvent(new Event('input')); }"); await waitFor(m, "document.getElementById('history-list').textContent.includes('没有找到')", 3000);
         check('搜不到时有提示', (await m.ev("document.getElementById('history-list').textContent")).includes('没有找到'));
     });
 
@@ -480,6 +485,118 @@ async function caseRun(name, fn) {
         await m.ev("mutateDB(db => { db.folders.push({ id: 'z', name: 'z' }); })");
         check('下载原始数据之前不会覆盖损坏的原文', (await m.ev("localStorage.getItem('md-pro-db')")) === '{坏的 json');
         await dlgClick(m, '稍后');
+    });
+
+    // ---- 以下几条来自 2026-10-09 对整改提交跑的 /code-review，每条都在整改后、复审修复前的版本（9e16309）上确认过会红 ----
+    await caseRun('复审-1/2 数据损坏：下载原始数据后能继续保存；同一份损坏内容不重复备份', async () => {
+        const m3 = await open(390, 844, 2);
+        try {
+            // (2) 已有一份内容不同的旧备份：反复读库，不该每次都再写一份整库副本
+            await m3.goto(BASE);
+            await m3.ev("localStorage.clear(); localStorage.setItem('md-pro-db-corrupt-backup', '旧的另一份'); localStorage.setItem('md-pro-db', '{这次坏的'); true");
+            await m3.goto(BASE);
+            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await dlgClick(m3, '稍后');
+            await m3.ev("for (let i = 0; i < 5; i++) getDB(); renderDrawer(); true");
+            const n = await m3.ev("Object.keys(localStorage).filter(k => k.startsWith('md-pro-db-corrupt-backup')).length");
+            check('反复读库：只多出 1 份备份（旧的 + 这次的 = 2）', n === 2, n);
+            // (1) 备份写不进去 → 下载原始数据 → 之后能正常保存
+            await m3.ev("localStorage.clear(); localStorage.setItem('md-pro-db', '{又坏了'); true");
+            await m3.send('Page.addScriptToEvaluateOnNewDocument', { source: "{ const _s = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('md-pro-db-corrupt-backup')) throw new DOMException('full', 'QuotaExceededError'); return _s.call(this, k, v); }; }" });
+            await m3.goto(BASE);
+            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await m3.ev(INSTRUMENT);
+            await dlgClick(m3, '下载原始数据');
+            check('下载到了原始数据', (await m3.ev('window.__dl.length')) === 1);
+            await m3.ev("mutateDB(db => { db.folders.push({ id: 'z', name: '新建的', isOpen: true }); })"); await sleep(300);
+            const after = await m3.ev("(() => { try { return JSON.parse(localStorage.getItem('md-pro-db')).folders.some(f => f.id === 'z'); } catch (e) { return false; } })()");
+            const again = await dlgShown(m3, 800);
+            check('下载之后保存成功，不再反复弹「数据损坏」', after && !again, { after, again });
+            // 损坏 + 没备份上 → 选「稍后」→ 另一个标签页把库修好了 → 这边应该能正常保存了（第三轮复审）
+            await m3.ev("localStorage.setItem('md-pro-db', '{第三次坏'); true");
+            await m3.goto(BASE);
+            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await dlgClick(m3, '稍后');
+            await m3.ev(`localStorage.setItem('md-pro-db', ${J(JSON.stringify({ folders: [{ id: 'root', name: '默认文件夹', isOpen: true }], files: [] }))}); true`);
+            await m3.ev("mutateDB(db => { db.folders.push({ id: 'y', name: '修好后建的', isOpen: true }); })"); await sleep(300);
+            const fixed = await m3.ev("(() => { try { return JSON.parse(localStorage.getItem('md-pro-db')).folders.some(f => f.id === 'y'); } catch (e) { return false; } })()");
+            check('别处把库修好后，这边能正常保存、不再弹损坏提示', fixed && !(await dlgShown(m3, 800)), fixed);
+        } finally { m3.close(); }
+    });
+
+    await caseRun('复审-3 换文档时，上一篇读到的位置不会记到新那篇头上', async () => {
+        const long = t => `# ${t}\n\n` + Array.from({ length: 200 }, (_, i) => `## 第 ${i} 节\n\n` + '内容'.repeat(30)).join('\n\n');
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: long('甲') }, { id: 'b', title: '乙', content: long('乙') }])
+            + "; localStorage.setItem('mdr-read-pos', JSON.stringify({ a: { i: 100, f: 0.1, n: 401, r: 0.5, t: 1 } })); localStorage.setItem('mdr-last-doc', 'a')");
+        await m.ev("document.querySelector('#home-continue .continue-btn').click()"); await sleep(1500);
+        // 在甲里滚一下，400ms 的「记位置」计时还没到就换到乙（用户读着读着马上点了另一篇）
+        await m.ev("{ const v = document.getElementById('view-read'); v.scrollTop += 600; v.dispatchEvent(new Event('scroll')); openDoc('b'); }");
+        await sleep(1500);
+        const r = await m.ev("({ posA: (JSON.parse(localStorage.getItem('mdr-read-pos') || '{}').a || {}).r, posB: JSON.parse(localStorage.getItem('mdr-read-pos') || '{}').b || null, pill: document.getElementById('resume-pill').classList.contains('show') })");
+        check('乙没有被记上甲的位置、也没有冒出假的「回到上次位置」', !r.posB && !r.pill, r);
+        check('甲这次滚到的新位置记在甲自己名下', typeof r.posA === 'number' && r.posA !== 0.5, r.posA);
+    });
+
+    await caseRun('复审-4 删除类确认框：回车默认是「取消」', async () => {
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: '# 甲' }]));
+        await m.ev("document.getElementById('btn-hamburger').click()"); await sleep(300);
+        await m.ev("document.querySelector('#history-list .history-more-btn').click()"); await sleep(400);
+        await m.ev("[...document.querySelectorAll('#action-menu .action-item')].find(e => e.textContent.includes('删除文档')).click()"); await sleep(400);
+        const focused = await m.ev("document.activeElement && document.activeElement.textContent");
+        check('焦点在「取消」上，不在红色「删除」上', focused === '取消', focused);
+        await m.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        await sleep(400);
+        check('按回车没有删掉文档', (await getDB(m)).files.length === 1);
+    });
+
+    await caseRun('复审-5 选了「不保存」但后面又取消：草稿还在', async () => {
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: '# 甲' }]));
+        await openFromDrawer(m, '甲'); await sleep(500);
+        await m.ev("switchState('edit')"); await sleep(400);
+        await m.ev("editorTextarea.value += '\\n要留住的修改'; editorTextarea.dispatchEvent(new Event('input')); saveDraftNow(); true");
+        await m.ev("document.getElementById('btn-hamburger').click()"); await sleep(300);
+        m.ev("document.getElementById('menu-new').click()");
+        await dlgClick(m, '不保存');
+        await dlgClick(m, '取消');   // 新建文档的名字框点取消
+        const r = await m.ev("({ st: currentState, draft: !!localStorage.getItem('mdr-draft:a'), val: editorTextarea.value.includes('要留住的修改') })");
+        check('还在编辑页、修改还在、草稿没被删', r.st === 'edit' && r.val && r.draft, r);
+        // 真正离开编辑页时才删草稿
+        // 半路放弃之后改动还在：下一次离开必须重新问（2026-10-09 第二轮复审：原来不再问，直接扔掉了改动和草稿）
+        await openFromDrawer(m, '甲');
+        const asked = await dlgShown(m);
+        check('半路放弃后再离开：仍然先问「有未保存的修改」', asked && asked.title === '有未保存的修改', asked);
+        check('关页面也仍然会拦', await m.ev('hasUnsavedEdit()'));
+        check('点到了「不保存」', await dlgClick(m, '不保存')); await sleep(600);
+        check('真正离开编辑页后草稿才删掉', !(await m.ev("localStorage.getItem('mdr-draft:a')")) && (await state(m)) === 'read');
+    });
+
+    await caseRun('复审-7 搜索摘要按原文位置截取（前面有变长字符也不歪）', async () => {
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: 'İİİİİİİİİİİİİİİİİİİİ 前文 关键词ABC 后文' }]));
+        await m.ev("document.getElementById('btn-hamburger').click()"); await sleep(300);
+        await m.ev("{ const i = document.getElementById('drawer-search-input'); i.value = '关键词abc'; i.dispatchEvent(new Event('input')); }"); await waitFor(m, "!!document.querySelector('.history-snippet')", 3000);
+        const snip = await m.ev("(document.querySelector('.history-snippet') || {}).textContent || ''");
+        check('摘要里包含完整的关键词', snip.includes('关键词ABC'), snip);
+        // 大小写不同也能搜到（abc 搜出 ABC）已经在上一条里覆盖了
+    });
+
+    await caseRun('复审-10 测试用的本地服务器不能读到被测目录以外的文件', async () => {
+        // 自己搭一个确定存在的场景：临时目录里放 site/index.html 和隔壁的 secret.txt，对 site 起一个服务器，
+        // 用 %2f 编码的 ../ 去读 secret.txt（%2f 不会被 URL 解析器提前规整掉，到了服务器解码后才变成 ../）。
+        const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'mdr-trav-'));
+        const site = path.join(tmp, 'site');
+        fs.mkdirSync(site); fs.writeFileSync(path.join(site, 'index.html'), 'ok'); fs.writeFileSync(path.join(tmp, 'secret.txt'), 'SECRET');
+        const s2 = await serve(site);
+        const b2 = `http://127.0.0.1:${s2.address().port}`;
+        const get = async p => { try { const r = await fetch(b2 + p); return { status: r.status, body: await r.text() }; } catch (e) { return { status: 'err', body: '' }; } };
+        try {
+            const normal = await get('/index.html');
+            check('对照：被测目录里的文件能正常读到', normal.status === 200 && normal.body === 'ok', normal.status);
+            const out = await get('/..%2fsecret.txt');
+            check('/..%2fsecret.txt 读不到隔壁的文件（403）', out.status === 403 && !out.body.includes('SECRET'), out.status);
+            const nul = await get('/index.html%00');
+            const alive = await get('/index.html');
+            check('路径里带 %00：返回 400，服务器没被带崩', nul.status === 400 && alive.status === 200, [nul.status, alive.status]);
+        } finally { s2.close(); fs.rmSync(tmp, { recursive: true, force: true }); }
     });
 
     await caseRun('P3-18 文件夹拖动：往下拖插到后面（触屏长按）', async () => {

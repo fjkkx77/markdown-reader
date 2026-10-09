@@ -687,12 +687,17 @@
         // 所以在用户把原始数据下载下来之前，saveDB 一律拒绝。
         let dbCorruptUnbacked = false;
         let corruptRaw = '';
+        let corruptBackupKey = 'md-pro-db-corrupt-backup';
 
         function getDB() {
             let rawStr = lsGet(DB_KEY);
-            if (!rawStr) return cloneDefaultDB();
+            if (!rawStr) { corruptRaw = ''; dbCorruptUnbacked = false; return cloneDefaultDB(); }
+            // 这份损坏内容已经处理过（见下面 catch 里的说明）：不用再花时间解析几 MB 的坏数据
+            if (corruptRaw && rawStr === corruptRaw) return cloneDefaultDB();
             try {
                 let parsed = JSON.parse(rawStr);
+                // 能正常解析了（比如在另一个标签页里修好了）：损坏状态解除，别再拦着保存
+                corruptRaw = ''; dbCorruptUnbacked = false;
                 if (Array.isArray(parsed)) {
                     let migratedDB = cloneDefaultDB();
                     parsed.forEach(f => { f.folderId = 'root'; migratedDB.files.push(f); });
@@ -707,15 +712,24 @@
                 // 所有文档就此永久消失。先把原文另存一份，再提示用户，至少还有得救。
                 // 2026-10-09：原来备份没写进去（空间满）也照样提示「已另存」；另外已经有一份旧备份、
                 // 这次损坏的内容跟它不一样时，这次的根本没存。现在按「这份原文到底存没存上」来判断。
+                // 同一份损坏内容只处理一次：getDB 调用得很频繁（侧边栏、搜索、每次保存），原来每调一次都可能再写一份
+                // 带时间戳的整库副本把空间写满；用户下载了原始数据之后，下一次 getDB 又把「没备份」标记打回去，永远存不了。
+                //（「同一份只处理一次」的判断放在 try 前面，见函数开头）
                 let backedUp = false;
                 try {
-                    const existing = localStorage.getItem('md-pro-db-corrupt-backup');
-                    if (existing === null) localStorage.setItem('md-pro-db-corrupt-backup', rawStr);
-                    else if (existing !== rawStr) localStorage.setItem('md-pro-db-corrupt-backup-' + Date.now(), rawStr);
-                    backedUp = true;
+                    // 已经有一份内容相同的备份（不管是哪个键）就不再写；记下这份原文实际存在哪个键，提示里要写对
+                    for (let k = 0; k < localStorage.length; k++) {
+                        const key = localStorage.key(k);
+                        if (key && key.startsWith('md-pro-db-corrupt-backup') && localStorage.getItem(key) === rawStr) { backedUp = true; corruptBackupKey = key; break; }
+                    }
+                    if (!backedUp) {
+                        const key = localStorage.getItem('md-pro-db-corrupt-backup') === null ? 'md-pro-db-corrupt-backup' : 'md-pro-db-corrupt-backup-' + Date.now();
+                        localStorage.setItem(key, rawStr);
+                        backedUp = true; corruptBackupKey = key;
+                    }
                 } catch (_) { backedUp = false; }
                 corruptRaw = rawStr;
-                if (!backedUp) dbCorruptUnbacked = true;
+                dbCorruptUnbacked = !backedUp;
                 if (!getDB.warned) {
                     getDB.warned = true;
                     setTimeout(() => warnCorrupt(backedUp), 0);
@@ -728,7 +742,7 @@
             const v = await ask({
                 title: '文档数据损坏',
                 message: backedUp
-                    ? '本地保存的文档数据读不出来。原始数据已经另存在浏览器里（md-pro-db-corrupt-backup），请先别清除浏览器数据；也建议现在把原始数据下载下来保存好。'
+                    ? `本地保存的文档数据读不出来。原始数据已经另存在浏览器里（localStorage 的 ${corruptBackupKey}），请先别清除浏览器数据；也建议现在把原始数据下载下来保存好。`
                     : '本地保存的文档数据读不出来，而且浏览器空间不够，没能另存备份。为了不覆盖这份原始数据，下载下来之前暂时不能保存任何修改。',
                 buttons: [{ text: '稍后', value: 'later', style: 'cancel' }, { text: '下载原始数据', value: 'dl', bold: true }]
             });
@@ -752,7 +766,7 @@
                 showAlert('保存失败', failMsg || SAVE_FAIL_GENERIC);
                 return false;
             }
-            renderDrawer();
+            renderDrawer(); // 侧边栏关着时它自己会跳过
             maybeRequestPersist();
             return true;
         }
@@ -893,7 +907,8 @@
                 return el;
             });
             const cancelBtn = buttons.find(b => b.style === 'cancel');
-            const defaultBtn = buttons.find(b => b.bold) || buttons[buttons.length - 1];
+            // 回车 = 加粗的那个；没有加粗的就取第一个不危险的。危险操作（删除、替换）永远不当默认，跟 iOS 一样
+            const defaultBtn = buttons.find(b => b.bold) || buttons.find(b => b.style !== 'destructive') || buttons[0];
             const onKey = (e) => {
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(cancelBtn ? cancelBtn.value : null); }
                 else if (e.key === 'Enter' && !e.isComposing && (e.target === input || !e.target.closest || !e.target.closest('.dlg-btn'))) { e.preventDefault(); e.stopPropagation(); finish(defaultBtn.value); }
@@ -1025,7 +1040,12 @@
 
         async function switchState(newState) {
             const prevState = currentState;
-            if (prevState === 'read' && currentFile) { saveReadPos(); lastReadScroll = vRead.scrollTop; }
+            if (prevState === 'read') { saveReadPos(); lastReadScroll = vRead.scrollTop; }
+            // 离开编辑页（包括直接换到另一篇的编辑页）就删掉刚才那篇的草稿：能走到这里的出口都已经有了结论——
+            // 保存了、点了放弃、在 confirmLeaveEdit 里选了「不保存」、删除了这篇，或者根本没改。
+            // 草稿只在「人还在编辑页」或「页面被关掉 / 杀掉」时才需要留着，那两种情况都不会走到这里。
+            // （选「不保存」后又半路放弃的，人还在编辑页，草稿也就还在。）
+            if (prevState === 'edit' && editingId) { clearDraft(editingId); editingId = null; }
             hideResumePill();
             disablePosSave();
             currentState = newState;
@@ -1048,6 +1068,7 @@
                 updateTocActive();
                 enablePosSaveSoon();
             } else if (newState === 'edit') {
+                editingId = currentFile.id;
                 originalContent = currentFile.content;
                 editorTextarea.value = currentFile.content;
                 editorTextarea.scrollTop = 0; previewPane.scrollTop = 0;
@@ -1113,7 +1134,10 @@
             return item;
         }
 
+        // 侧边栏关着时一律不画（打开时 openDrawer 会先把 drawerOpen 置真再画）：每画一次都要把整个库重新解析一遍，
+        // 保存、别的标签页改库（storage 事件）都会来调这里，关着时画了也看不见。
         function renderDrawer() {
+            if (!drawerOpen) return;
             let db = getDB();
             historyList.innerHTML = '';
             if (searchQuery) { renderSearchResults(db); return; }
@@ -1244,18 +1268,21 @@
 
         // 侧边栏搜索：标题或内容里包含关键词（不分大小写）。标题命中的排前面。
         function renderSearchResults(db) {
-            const q = searchQuery.toLowerCase();
+            // 用不分大小写的正则直接在原文里找，位置就是原文的位置。原来在 toLowerCase() 之后的文字里找、再拿位置去切原文，
+            // 有的字符转小写后长度会变（如土耳其文的 İ），摘要会切歪。
+            const re = new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
+            const findCI = (text) => { const m = re.exec(text); return m ? { index: m.index, len: m[0].length } : null; };
             const folderName = id => (db.folders.find(f => f.id === id) || {}).name || '默认文件夹';
             const hits = [];
             db.files.forEach(file => {
                 const title = String(file.title || ''), content = String(file.content || '');
-                const inTitle = title.toLowerCase().includes(q);
-                const at = content.toLowerCase().indexOf(q);
-                if (!inTitle && at === -1) return;
+                const inTitle = !!findCI(title);
+                const m = findCI(content);
+                if (!inTitle && !m) return;
                 let line = folderName(file.folderId);
-                if (at !== -1) {
-                    const start = Math.max(0, at - 12);
-                    line += ' · ' + (start > 0 ? '…' : '') + content.slice(start, at + q.length + 30).replace(/\s+/g, ' ');
+                if (m) {
+                    const start = Math.max(0, m.index - 12);
+                    line += ' · ' + (start > 0 ? '…' : '') + content.slice(start, m.index + m.len + 30).replace(/\s+/g, ' ');
                 }
                 hits.push({ file, inTitle, line });
             });
@@ -1268,12 +1295,15 @@
             }
             hits.forEach(h => historyList.appendChild(buildFileItem(h.file, h.line)));
         }
+        // 打字停顿 150ms 再搜：每搜一次要把整个库解析一遍、再逐篇查全文，库接近 5MB 时手机上每个按键都会卡
+        let searchTimer = null;
         searchInput.addEventListener('input', () => {
-            searchQuery = searchInput.value.trim();
             searchClear.classList.toggle('hidden', !searchInput.value);
-            renderDrawer();
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { searchQuery = searchInput.value.trim(); renderDrawer(); }, 150);
         });
         searchClear.onclick = () => {
+            clearTimeout(searchTimer);
             searchInput.value = ''; searchQuery = '';
             searchClear.classList.add('hidden');
             renderDrawer();
@@ -1409,7 +1439,6 @@
             clearDraft(id); removeReadPos(id);
             if (lsGet('mdr-last-doc') === id) lsRemove('mdr-last-doc');
             if (currentFile && currentFile.id === id) {
-                if (editingIt) originalContent = editorTextarea.value; // 已确认丢弃，别再拦
                 currentFile = null; lastReadFileId = null;
                 switchState('home');
                 if (isMobileWidth()) closeDrawer();
@@ -1499,7 +1528,12 @@
 
         let drawerOpen = false;
         const openDrawer = () => { drawerOpen = true; renderDrawer(); showLayer(overlay); drawer.style.transform = 'translateX(0)'; };
-        const closeDrawer = () => { if (!drawerOpen) return; drawerOpen = false; hideLayer(overlay); drawer.style.transform = 'translateX(-100%)'; };
+        const closeDrawer = () => {
+            if (!drawerOpen) return;
+            drawerOpen = false; hideLayer(overlay); drawer.style.transform = 'translateX(-100%)';
+            // 还没到点的搜索计时作废，搜索词直接以输入框为准（下次打开时按它画）
+            clearTimeout(searchTimer); searchQuery = searchInput.value.trim();
+        };
         headerUI.btnHamburger.onclick = openDrawer; overlay.onclick = closeDrawer;
 
         // ================= 移动端边缘滑动呼出/关闭菜单 =================
@@ -1548,7 +1582,6 @@
             if (!opts.skipConfirm && !(await confirmLeaveEdit())) return;
             const file = getDB().files.find(f => f.id === id);
             if (!file) { notify('这篇文档已经不在了'); renderDrawer(); renderHomeContinue(); return; }
-            if (currentState === 'edit') originalContent = editorTextarea.value; // 上面已经确认过了，别让关页面拦截再拦一次
             currentFile = { ...file };
             closeDrawer(); closeTocMobile();
             await switchState('read');
@@ -1558,10 +1591,17 @@
             }
         }
 
-        // 编辑页有没保存的修改
+        // 编辑页有没保存的修改。没有「已经确认过」之类的标记：只要人还在编辑页、内容跟进来时不一样，
+        // 就算有未保存的修改，下次离开照样会问（关页面也照样拦）。
         function hasUnsavedEdit() { return currentState === 'edit' && editorTextarea.value !== originalContent; }
 
-        // 返回 true 表示可以离开编辑页（没改动 / 已保存 / 选了不保存）
+        // 正在编辑的是哪篇（进入编辑页时记下）。离开编辑页时 switchState 按它删草稿。
+        let editingId = null;
+
+        // 返回 true 表示可以离开编辑页（没改动 / 已保存 / 选了不保存）。选「不保存」时这里不删草稿：
+        // 调用方后面还可能半路放弃（新建时名字框点了取消、导入时同名点了取消），人还留在编辑页、改动还在，
+        // 草稿得留着；真正离开编辑页时 switchState 才删。
+        // 调用方拿到 true 之后，切换文档要走 skipConfirm（openDoc）或者直接 switchState，别再调一次本函数。
         async function confirmLeaveEdit() {
             if (!hasUnsavedEdit()) return true;
             const v = await ask({
@@ -1574,7 +1614,7 @@
                 ]
             });
             if (v === 'save') return await commitEdit();
-            if (v === 'discard') { clearDraft(currentFile.id); return true; }
+            if (v === 'discard') return true;
             return false;
         }
 
@@ -1708,7 +1748,7 @@
         function getReadPos(id) { const p = readAllPos()[id]; return p && typeof p.r === 'number' ? p : null; }
         function removeReadPos(id) { const all = readAllPos(); if (all[id]) { delete all[id]; lsSet(POS_KEY, JSON.stringify(all)); } }
         // 程序自己设滚动位置（换文档回到顶部、重新渲染）时不记，免得把上次读到的位置冲成 0
-        function disablePosSave() { posSaveEnabled = false; posDirty = false; clearTimeout(posEnableTimer); }
+        function disablePosSave() { posSaveEnabled = false; posDirty = false; clearTimeout(posEnableTimer); clearTimeout(posSaveTimer); posSaveTimer = null; }
         function enablePosSaveSoon() { clearTimeout(posEnableTimer); posEnableTimer = setTimeout(() => { posSaveEnabled = true; }, 300); }
         function captureReadPos() {
             const max = vRead.scrollHeight - vRead.clientHeight;
@@ -1722,13 +1762,15 @@
             }
             return { i, f: +f.toFixed(4), n: kids.length, r: +(vRead.scrollTop / max).toFixed(4), t: Date.now() };
         }
+        // 记在「阅读区此刻显示的那篇」（lastReadFileId）名下，不用 currentFile：换文档时 openDoc 先把 currentFile
+        // 换成了新的一篇、再离开阅读页，用 currentFile 会把上一篇的位置记到新那篇头上（还会冒出一个假的「回到上次位置」）。
         function saveReadPos() {
-            if (currentState !== 'read' || !currentFile || !posDirty) return;
+            if (currentState !== 'read' || !lastReadFileId || !posDirty) return;
             const pos = captureReadPos();
             if (!pos) return;
             posDirty = false;
             const all = readAllPos();
-            all[currentFile.id] = pos;
+            all[lastReadFileId] = pos;
             const ids = Object.keys(all);
             if (ids.length > 300) ids.sort((a, b) => all[a].t - all[b].t).slice(0, ids.length - 300).forEach(k => delete all[k]);
             lsSet(POS_KEY, JSON.stringify(all));
@@ -1859,7 +1901,8 @@
                 }
                 if (v !== 'copy') return;
             }
-            const created = createFile(uniqueTitle(baseTitle, db), text, IMPORT_FAIL);
+            // 起名要用此刻最新的库：上面弹框等着用户点的时候，别的标签页可能刚好存了同名的「xx (2)」
+            const created = createFile(uniqueTitle(baseTitle, getDB()), text, IMPORT_FAIL);
             if (!created) return;
             await openDoc(created.id, { skipConfirm: true });
         }
@@ -1968,7 +2011,6 @@
             closeDrawer();
             notify(v === 'replace' ? `已恢复 ${added} 篇文档` : `新增 ${added} 篇，更新 ${updated} 篇`, 2600);
             // 离开编辑页已经确认过了（上面的 confirmLeaveEdit），恢复完不再停在编辑页
-            if (currentState === 'edit') originalContent = editorTextarea.value;
             const still = currentFile && getDB().files.find(f => f.id === currentFile.id);
             if (currentState !== 'home' && !still) { currentFile = null; lastReadFileId = null; switchState('home'); }
             else if (currentState === 'edit') { currentFile = { ...still }; lastReadFileId = null; switchState('read'); }
@@ -2438,7 +2480,6 @@
             if (!title) return;
             const file = createFile(title, `# ${title}\n\n`, '浏览器本地存储空间已满（或被禁用），新文档没有建起来。\n请删掉一些不用的文档后重试。');
             if (!file) return;
-            if (currentState === 'edit') originalContent = editorTextarea.value; // 已确认过，别再拦
             currentFile = { ...file }; closeDrawer(); switchState('edit');
         };
 
@@ -2611,7 +2652,9 @@
         const themeChoice = lsGet('mdr-theme-choice');
         setTheme(themeChoice ? themeChoice === 'dark' : darkMQ.matches);
 
-        renderDrawer(); switchState('home');
+        // 打开页面先读一次库：数据损坏要在一打开时就提示、先把原文另存起来（侧边栏关着时不画，不会替我们读）
+        getDB();
+        switchState('home');
     </script>
 </body>
 </html>
