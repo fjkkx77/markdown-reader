@@ -6,7 +6,7 @@
 ## 一、基本事实
 - 线上：https://fjkkx77.github.io/markdown-reader/ ，GitHub Pages 直接发 `main` 分支根目录，**push 到 main 就是上线**，没有构建步骤。
 - 整个应用就是一个 `index.html`（CRLF 行尾，脚本改它时注意）。第三方库全从 CDN 加载、**全部钉死版本**。
-- 测试：`MDR_PROXY=http://127.0.0.1:8800 node tests/verify.cjs`（真实 headless Chrome，手机 390 + 电脑 1280，129 条）。
+- 测试：`MDR_PROXY=http://127.0.0.1:8800 node tests/verify.cjs`（真实 headless Chrome，手机 390 + 电脑 1280，135 条）。
   测旧版本（A/B）时加 `MDR_LEGACY=1`：旧版没有 drawerOpen / themeChoice，严格的「页面准备好」判断会一直等不到。
   `node tests/verify.cjs <目录>` 可以测别的目录里的 index.html——改完拿旧版本（`git show <commit>:index.html`）跑一遍做 A/B，
   确认新加的判据在旧版上会变红。`ONLY=正则` 只跑名字匹配的用例。
@@ -29,6 +29,9 @@
    「回到上次读到的位置」——**不许改成自动跳**。
 7. **不做双指缩放**（用户 2026-10-09 定的）：viewport 里的 `user-scalable=no` 保留，别去改。
 8. 编辑预览的光标同步：做法见记忆库 `feedback_cursor_sync_preview_recipe.md`（v2.0，`processAllTokens` 插 `.kb-block-mark` 标记块）。
+9. **侧边栏开关手势要先锁方向**（2026-10-10 修，两站同一段代码）：手指先走满 10px 时，横向 > 纵向×1.5 才算横滑，否则整次手势当滚动不理。
+   旧版只看横向位移 >50px，用户在抽屉右半边用拇指上下滑文件列表（弧线会往左偏）就被误关；贴左边缘上下滚正文也会误开。
+   测试「侧边栏手势」那条用真实触摸事件覆盖了这几种，改手势后先跑它（`ONLY=侧边栏手势`）。
 
 ## 三、2026-10-09 整改了什么（对照审查报告）
 - 安全：mermaid 10.9.3→10.9.8、katex 0.16.9→0.16.22（JS/CSS 两处）、dompurify 3.4.10→3.4.16；禁 `<style>`/`<form>`；
@@ -57,6 +60,6 @@
 ## 四、还没确认的事（需要真机 / 用户）
 - iPhone 真机：①从屏幕最左边缘往右滑，打开的是侧边栏还是 Safari 的「返回」；②横屏时左上角菜单是否让开了刘海；
   ③编辑时键盘弹出后编辑区够不够大；④点外链在新标签打开后，回来是否还在原文档；⑤备份文件在 iPhone 上能否正常下载 / 选择恢复；
-  ⑥手机上长按文件夹拖动排序的手感。电脑上的 headless Chrome + Playwright WebKit 都测过，但不等于 iOS。
+  ⑥手机上长按文件夹拖动排序的手感；⑦（2026-10-10）侧边栏打开时在右半边上下滑不再误关、真往左滑仍能关。电脑上的 headless Chrome + Playwright WebKit 都测过，但不等于 iOS。
 - `navigator.storage.persist()` 能不能豁免 Safari 的 7 天清理：WebKit 没写明，不确定。真正的保险是定期导出备份。
 - 姊妹站 Mathematical-formulas：2026-10-09 已把这批修复同步过去（那边有自己的 PROJECT_STATUS.md）。
