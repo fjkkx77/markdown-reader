@@ -61,7 +61,9 @@ async function reset(c, setupJs) {
     await c.goto(BASE);
     await c.ev(`localStorage.clear(); ${setupJs || ''}; true`);
     await c.goto(BASE);
-    const ok = await waitFor(c, "typeof switchState === 'function' && !!window.mermaid && !!window.katex && typeof drawerOpen === 'boolean' && document.getElementById('view-home') && !document.getElementById('view-home').classList.contains('hidden')", 30000);
+    // MDR_LEGACY=1：测旧版本（A/B）时用宽松的就绪判断——旧版没有 drawerOpen / themeChoice 这些变量
+    const ready = process.env.MDR_LEGACY ? "typeof switchState === 'function' && !!window.mermaid && document.readyState === 'complete'" : "typeof switchState === 'function' && !!window.mermaid && !!window.katex && typeof drawerOpen === 'boolean' && typeof themeChoice !== 'undefined' && document.getElementById('view-home') && !document.getElementById('view-home').classList.contains('hidden')";
+    const ok = await waitFor(c, ready, 30000);
     if (!ok) throw new Error('页面没准备好');
     await c.ev(INSTRUMENT);
     c.errors.length = 0;
@@ -310,7 +312,7 @@ async function caseRun(name, fn) {
         const label = await m.ev("document.getElementById('home-continue').textContent");
         check('回首页：出现「继续阅读 · 读到 60%」', /继续阅读 · 读到 (59|60|61)%/.test(label) && label.includes('长文'), label);
         // 刷新页面也还是首页
-        await m.goto(BASE); await waitFor(m, "typeof switchState === 'function' && !!window.mermaid"); await m.ev(INSTRUMENT);
+        await m.goto(BASE); await waitFor(m, "typeof switchState === 'function' && !!window.mermaid && typeof themeChoice !== 'undefined'"); await m.ev(INSTRUMENT);
         check('刷新后仍是首页（不自动跳）', (await state(m)) === 'home');
         await m.ev("document.querySelector('#home-continue .continue-btn').click()"); await sleep(1200);
         const after = await m.ev("document.getElementById('view-read').scrollTop");
@@ -337,7 +339,7 @@ async function caseRun(name, fn) {
         check('停顿后草稿已经存下', !!(await m.ev("localStorage.getItem('mdr-draft:a')")));
         m.beforeunloads.length = 0;
         await m.goto(BASE);
-        check('有未保存修改时离开页面：浏览器会拦一下', m.beforeunloads.includes('beforeunload'), m.beforeunloads); await waitFor(m, "typeof switchState === 'function' && !!window.mermaid"); await m.ev(INSTRUMENT);
+        check('有未保存修改时离开页面：浏览器会拦一下', m.beforeunloads.includes('beforeunload'), m.beforeunloads); await waitFor(m, "typeof switchState === 'function' && !!window.mermaid && typeof themeChoice !== 'undefined'"); await m.ev(INSTRUMENT);
         await openFromDrawer(m, '甲'); await sleep(600);
         check('重新打开：阅读页顶部提示有草稿', (await m.ev("document.getElementById('draft-bar-slot').textContent")).includes('未保存的草稿'));
         await m.ev("[...document.querySelectorAll('.draft-bar button')].find(b => b.textContent === '继续编辑').click()"); await sleep(700);
@@ -471,6 +473,11 @@ async function caseRun(name, fn) {
         await m.ev("mutateDB(db => { db.files.find(f => f.id === 'sample').content = '# 我改过的示例'; })");
         await m.ev("switchState('home')"); await m.ev("document.getElementById('btn-home-sample').click()"); await sleep(800);
         check('改过的示例再点「示例」：还是改过的', (await readerText(m)).includes('我改过的示例'));
+        // 库里的 sample 是数学公式阅读器以前的默认示例（两站共用文档库、以前同一个 id）：也当旧默认内容升级
+        const mathOld = '这是一些概率论公式的测试：\n\n1. 单选选项：则 $P\\{X^2 = 1\\} = $ （B）\n2. 分布函数：则 $P\\{X \\leq 2\\} = $ （B）\n3. 二维分布：则 $P\\{6 < X \\leq 8, 5 < Y \\leq 10\\} = $ ( A )';
+        await reset(m, dbJs([{ id: 'sample', title: '示例：概率公式测试', content: mathOld }]));
+        await m.ev("document.getElementById('btn-home-sample').click()"); await sleep(2000);
+        check('库里是数学公式阅读器的旧示例时：也升级成本站的功能展示', (await readerText(m)).includes('示例：功能展示'));
     });
 
     await caseRun('P3-17 数据损坏且备份写不进去：如实说明、暂停保存', async () => {
@@ -478,7 +485,7 @@ async function caseRun(name, fn) {
         await m.ev("localStorage.clear(); localStorage.setItem('md-pro-db', '{坏的 json'); true");
         await m.send('Page.addScriptToEvaluateOnNewDocument', { source: "if (location.hash !== '#noblock') { const _s = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('md-pro-db-corrupt-backup')) throw new DOMException('full', 'QuotaExceededError'); return _s.call(this, k, v); }; }" });
         await m.goto(BASE);
-        await waitFor(m, "typeof switchState === 'function'", 20000);
+        await waitFor(m, "typeof switchState === 'function' && typeof themeChoice !== 'undefined'", 20000);
         const d = await dlgShown(m, 5000);
         check('提示说「没能另存备份」而不是「已另存」', d && d.msg.includes('没能另存备份'), d);
         await dlgClick(m, '稍后');
@@ -495,7 +502,7 @@ async function caseRun(name, fn) {
             await m3.goto(BASE);
             await m3.ev("localStorage.clear(); localStorage.setItem('md-pro-db-corrupt-backup', '旧的另一份'); localStorage.setItem('md-pro-db', '{这次坏的'); true");
             await m3.goto(BASE);
-            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await waitFor(m3, "typeof switchState === 'function' && typeof drawerOpen === 'boolean' && typeof themeChoice !== 'undefined'", 20000);
             await dlgClick(m3, '稍后');
             await m3.ev("for (let i = 0; i < 5; i++) getDB(); renderDrawer(); true");
             const n = await m3.ev("Object.keys(localStorage).filter(k => k.startsWith('md-pro-db-corrupt-backup')).length");
@@ -504,9 +511,10 @@ async function caseRun(name, fn) {
             await m3.ev("localStorage.clear(); localStorage.setItem('md-pro-db', '{又坏了'); true");
             await m3.send('Page.addScriptToEvaluateOnNewDocument', { source: "{ const _s = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('md-pro-db-corrupt-backup')) throw new DOMException('full', 'QuotaExceededError'); return _s.call(this, k, v); }; }" });
             await m3.goto(BASE);
-            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await waitFor(m3, "typeof switchState === 'function' && typeof drawerOpen === 'boolean' && typeof themeChoice !== 'undefined'", 20000);
             await m3.ev(INSTRUMENT);
             await dlgClick(m3, '下载原始数据');
+            await dlgClick(m3, '已经存好');
             check('下载到了原始数据', (await m3.ev('window.__dl.length')) === 1);
             await m3.ev("mutateDB(db => { db.folders.push({ id: 'z', name: '新建的', isOpen: true }); })"); await sleep(300);
             const after = await m3.ev("(() => { try { return JSON.parse(localStorage.getItem('md-pro-db')).folders.some(f => f.id === 'z'); } catch (e) { return false; } })()");
@@ -515,7 +523,7 @@ async function caseRun(name, fn) {
             // 损坏 + 没备份上 → 选「稍后」→ 另一个标签页把库修好了 → 这边应该能正常保存了（第三轮复审）
             await m3.ev("localStorage.setItem('md-pro-db', '{第三次坏'); true");
             await m3.goto(BASE);
-            await waitFor(m3, "typeof switchState === 'function'", 20000);
+            await waitFor(m3, "typeof switchState === 'function' && typeof drawerOpen === 'boolean' && typeof themeChoice !== 'undefined'", 20000);
             await dlgClick(m3, '稍后');
             await m3.ev(`localStorage.setItem('md-pro-db', ${J(JSON.stringify({ folders: [{ id: 'root', name: '默认文件夹', isOpen: true }], files: [] }))}); true`);
             await m3.ev("mutateDB(db => { db.folders.push({ id: 'y', name: '修好后建的', isOpen: true }); })"); await sleep(300);
@@ -597,6 +605,70 @@ async function caseRun(name, fn) {
             const alive = await get('/index.html');
             check('路径里带 %00：返回 400，服务器没被带崩', nul.status === 400 && alive.status === 200, [nul.status, alive.status]);
         } finally { s2.close(); fs.rmSync(tmp, { recursive: true, force: true }); }
+    });
+
+    // ---- 2026-10-09 对数学公式阅读器同步改动跑 /code-review 找出的（共用代码，两站一起修） ----
+    await caseRun('复审4-1 数据损坏：下载后要确认存好了才解除保护', async () => {
+        const m4 = await open(390, 844, 2);
+        try {
+            await m4.goto(BASE);
+            await m4.ev("localStorage.clear(); localStorage.setItem('md-pro-db', '{坏了'); true");
+            await m4.send('Page.addScriptToEvaluateOnNewDocument', { source: "{ const _s = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('md-pro-db-corrupt-backup')) throw new DOMException('full', 'QuotaExceededError'); return _s.call(this, k, v); }; }" });
+            await m4.goto(BASE);
+            await waitFor(m4, "typeof switchState === 'function' && typeof themeChoice !== 'undefined'", 20000);
+            await m4.ev(INSTRUMENT);
+            await dlgClick(m4, '下载原始数据');
+            const d2 = await dlgShown(m4);
+            check('下载后先问「原始数据存好了吗」', d2 && d2.title === '原始数据存好了吗？', d2);
+            await dlgClick(m4, '还没有');
+            await m4.ev("mutateDB(db => { db.folders.push({ id: 'z', name: 'z' }); })"); await sleep(300);
+            check('选「还没有」：仍然不会覆盖损坏的原文', (await m4.ev("localStorage.getItem('md-pro-db')")) === '{坏了');
+        } finally { m4.close(); }
+    });
+
+    await caseRun('复审4-2 「回到上次位置」先随手滑一下再点：仍跳到上次的位置', async () => {
+        const long = '# 长文\n\n' + Array.from({ length: 200 }, (_, i) => `## 第 ${i} 节\n\n` + '内容'.repeat(30)).join('\n\n');
+        await reset(m, dbJs([{ id: 'a', title: '长文', content: long }]));
+        await openFromDrawer(m, '长文'); await sleep(900);
+        await m.ev("{ const v = document.getElementById('view-read'); v.scrollTop = Math.round((v.scrollHeight - v.clientHeight) * 0.6); v.dispatchEvent(new Event('scroll')); }"); await sleep(800);
+        const target = await m.ev("document.getElementById('view-read').scrollTop");
+        await m.ev("switchState('home')"); await sleep(300);
+        await openFromDrawer(m, '长文'); await sleep(900);
+        // 按钮出来之后，用户先往下滑了一点（够让「读到哪」重新记一次）
+        await m.ev("{ const v = document.getElementById('view-read'); v.scrollTop = 200; v.dispatchEvent(new Event('scroll')); }"); await sleep(800);
+        await m.ev("document.getElementById('resume-go').click()"); await sleep(400);
+        const after = await m.ev("document.getElementById('view-read').scrollTop");
+        check('跳到的是按钮上写的那个位置', Math.abs(after - target) < 40, { target, after });
+    });
+
+    await caseRun('复审4-3 共用的草稿：别处写的草稿，这边没改就离开时不删', async () => {
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: '# 甲' }]));
+        await openFromDrawer(m, '甲'); await sleep(500);
+        await m.ev("switchState('edit')"); await sleep(500);
+        // 进了编辑页之后，另一个标签页（或姊妹站）给同一篇写了它自己的草稿
+        await m.ev("localStorage.setItem('mdr-draft:a', JSON.stringify({ content: '# 甲\\n别处的草稿', base: '# 甲', title: '甲', at: Date.now() })); true");
+        await m.ev("document.dispatchEvent(new Event('visibilitychange')); saveDraftNow(); true");
+        check('切后台（内容没改）：别处的草稿还在', !!(await m.ev("localStorage.getItem('mdr-draft:a')")));
+        await m.ev("switchState('read')"); await sleep(500);
+        check('什么都没改就离开编辑页：别处的草稿还在', !!(await m.ev("localStorage.getItem('mdr-draft:a')")));
+    });
+
+    await caseRun('复审4-5/6 弹框开着时 Ctrl+S 不弹浏览器另存；弹框关掉后不挡点击', async () => {
+        await reset(m, dbJs([{ id: 'a', title: '甲', content: '# 甲' }]));
+        m.ev("showAlert('标题', '内容')");
+        await dlgShown(m);
+        const prevented = await m.ev("(() => { const t = document.activeElement || document.body; const e = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }); t.dispatchEvent(e); return e.defaultPrevented; })()");
+        check('弹框开着时按 Ctrl+S：默认动作（网页另存为）被拦下', prevented === true, prevented);
+        await m.ev("document.querySelector('.dlg-overlay.show .dlg-btn').click()");
+        const pe = await m.ev("(() => { const o = document.querySelector('.dlg-overlay'); return o ? getComputedStyle(o).pointerEvents : 'gone'; })()");
+        check('弹框关掉、还在淡出时：遮罩不挡点击', pe === 'none' || pe === 'gone', pe);
+    });
+
+    await caseRun('复审4-8 库里混进 null 条目：侧边栏照常显示', async () => {
+        await reset(m, "localStorage.setItem('md-pro-db', JSON.stringify({ folders: [null, { id: 'root', name: '默认文件夹', isOpen: true }, 5], files: [null, { id: 'a', title: '甲', content: '# 甲', timestamp: 1, folderId: 'root' }, 'x'] }))");
+        await m.ev("document.getElementById('btn-hamburger').click()"); await sleep(400);
+        const names = await m.ev("[...document.querySelectorAll('#history-list .history-name')].map(e => e.textContent)");
+        check('侧边栏显示出「甲」，没有报错', J(names) === J(['甲']) && m.errors.length === 0, { names, errors: m.errors.slice(0, 2) });
     });
 
     await caseRun('P3-18 文件夹拖动：往下拖插到后面（触屏长按）', async () => {
@@ -687,12 +759,16 @@ async function caseRun(name, fn) {
         const n = await d.ev('window.__renders');
         check(`连续敲 8 个字只渲染 ≤ 2 次（单次渲染 ${Math.round(cost)}ms）`, cost >= 30 ? n <= 2 : true, { renders: n, cost: Math.round(cost) });
         check('停下后预览是最新内容', (await d.ev("document.getElementById('editor-preview').innerText")).includes('abcdefgh'));
+        // 复审4-4：敲完字立刻保存（150ms 防抖还没到），离开编辑页后不该再在看不见的预览上整篇渲染一次
+        await d.send('Input.insertText', { text: 'Z' });
+        await d.ev('window.__renders = 0; saveEdit(); true'); await sleep(900);
+        check('敲完字马上保存：离开编辑页后预览不再渲染', (await d.ev('window.__renders')) === 0 && (await d.ev('currentState')) === 'read', await d.ev('window.__renders'));
     });
 
     await caseRun('P3-10 代码行号跟代码行对齐', async () => {
         await reset(d, dbJs([{ id: 'a', title: '代码', content: '# 代码\n\n```js\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\n```' }]));
         await d.ev("localStorage.setItem('md-line-numbers', 'on')");
-        await d.goto(BASE); await waitFor(d, "typeof switchState === 'function' && !!window.mermaid"); await d.ev(INSTRUMENT);
+        await d.goto(BASE); await waitFor(d, "typeof switchState === 'function' && !!window.mermaid && typeof themeChoice !== 'undefined'"); await d.ev(INSTRUMENT);
         await openFromDrawer(d, '代码'); await sleep(800);
         // 比「行框」不比字形：代码第 i 行的行框顶 = pre 顶 + pre 上内边距 + i × 行高；行号第 i 个 span 本身就是一个行框。
         // （字形框比行框矮、在行框里偏下约 2px，拿它比会误报）
@@ -712,6 +788,11 @@ async function caseRun(name, fn) {
         await d.ev("document.getElementById('btn-toc-toggle').click()"); await sleep(400);
         const w1 = await d.ev("document.getElementById('toc-sidebar').getBoundingClientRect().width");
         check('点目录按钮可以收起', w1 < 2, w1);
+        const bgOff = await d.ev("getComputedStyle(document.getElementById('btn-toc-toggle')).backgroundColor");
+        await d.ev("document.getElementById('btn-toc-toggle').click()"); await sleep(300);
+        const bgOn = await d.ev("getComputedStyle(document.getElementById('btn-toc-toggle')).backgroundColor");
+        check('目录开关：展开时按钮有底色、收起时没有（看得出状态）', bgOn !== bgOff && !/rgba\(0, 0, 0, 0\)|transparent/.test(bgOn), { bgOff, bgOn });
+        await d.ev("document.getElementById('btn-toc-toggle').click()"); await sleep(300);
         await d.ev("document.getElementById('btn-toc-toggle').click()"); await sleep(400);
         await openFromDrawer(d, '无标题'); await sleep(700);
         const w2 = await d.ev("({ w: document.getElementById('toc-sidebar').getBoundingClientRect().width, btn: document.getElementById('btn-toc-toggle').classList.contains('hidden') })");

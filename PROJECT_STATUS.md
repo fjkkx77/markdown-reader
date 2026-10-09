@@ -6,7 +6,8 @@
 ## 一、基本事实
 - 线上：https://fjkkx77.github.io/markdown-reader/ ，GitHub Pages 直接发 `main` 分支根目录，**push 到 main 就是上线**，没有构建步骤。
 - 整个应用就是一个 `index.html`（CRLF 行尾，脚本改它时注意）。第三方库全从 CDN 加载、**全部钉死版本**。
-- 测试：`MDR_PROXY=http://127.0.0.1:8800 node tests/verify.cjs`（真实 headless Chrome，手机 390 + 电脑 1280，118 条）。
+- 测试：`MDR_PROXY=http://127.0.0.1:8800 node tests/verify.cjs`（真实 headless Chrome，手机 390 + 电脑 1280，129 条）。
+  测旧版本（A/B）时加 `MDR_LEGACY=1`：旧版没有 drawerOpen / themeChoice，严格的「页面准备好」判断会一直等不到。
   `node tests/verify.cjs <目录>` 可以测别的目录里的 index.html——改完拿旧版本（`git show <commit>:index.html`）跑一遍做 A/B，
   确认新加的判据在旧版上会变红。`ONLY=正则` 只跑名字匹配的用例。
 
@@ -48,10 +49,14 @@
 人还在编辑页、或页面被关掉 / 杀掉时草稿才留着。没采纳的一条：复审说正则搜索漏了土耳其文 İ——实测旧写法
 （toLowerCase）同样搜不到（`'İ'.toLowerCase()` 是 i + 组合点），不是退步。
 
+### 同步到数学公式阅读器时又审出的（共用代码，两站一起修）
+数据损坏时下载原始数据后要确认「已经存好」才解除保护；「回到上次位置」用显示按钮那一刻的位置；共用的草稿键只自动删本页自己写的那份
+（`clearOwnDraft`，明确的保存 / 放弃 / 删除仍用 `clearDraft`）；离开编辑页后不再渲染预览；弹框开着时 Ctrl+S 也拦；弹框淡出时不挡点击；
+库里混进 null 条目时读的时候筛掉；`mutateDB` 存上后返回库对象（省一次整库解析）；示例升级也认数学公式阅读器以前的旧示例。
+
 ## 四、还没确认的事（需要真机 / 用户）
 - iPhone 真机：①从屏幕最左边缘往右滑，打开的是侧边栏还是 Safari 的「返回」；②横屏时左上角菜单是否让开了刘海；
   ③编辑时键盘弹出后编辑区够不够大；④点外链在新标签打开后，回来是否还在原文档；⑤备份文件在 iPhone 上能否正常下载 / 选择恢复；
   ⑥手机上长按文件夹拖动排序的手感。电脑上的 headless Chrome + Playwright WebKit 都测过，但不等于 iOS。
 - `navigator.storage.persist()` 能不能豁免 Safari 的 7 天清理：WebKit 没写明，不确定。真正的保险是定期导出备份。
-- 姊妹站 Mathematical-formulas 用的也是 mermaid 10.9.3 / katex 0.16.9 / dompurify 3.4.10，而且它那边仍然是「整份写回」——
-  两站同时开着时，**那边**仍可能冲掉这边刚存的内容。这次没改那个仓库，等用户决定。
+- 姊妹站 Mathematical-formulas：2026-10-09 已把这批修复同步过去（那边有自己的 PROJECT_STATUS.md）。

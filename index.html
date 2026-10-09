@@ -292,6 +292,8 @@
            原生弹框在 iPhone 上顶部还会显示网址，也没法统一深色模式。 */
         .dlg-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; opacity: 0; transition: opacity 0.2s; }
         .dlg-overlay.show { opacity: 1; }
+        /* 关掉后还要淡出 0.2 秒，这段时间里不能挡住下面的点击 */
+        .dlg-overlay:not(.show) { pointer-events: none; }
         /* 底色几乎不透明：毛玻璃没渲染出来的环境里（省电模式、部分安卓），后面的正文透上来会跟弹框文字叠在一起 */
         .dlg { width: 100%; max-width: 300px; background: rgba(250, 250, 252, 0.96); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-radius: 14px; overflow: hidden; transform: scale(1.08); transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
         [data-theme="dark"] .dlg { background: rgba(44, 44, 46, 0.96); }
@@ -705,6 +707,10 @@
                     return migratedDB;
                 }
                 if (!parsed || !Array.isArray(parsed.folders) || !Array.isArray(parsed.files)) throw new Error('文档库结构不对');
+                // 数组里混进 null / 非对象（别的版本写坏的、手工改过的）时，渲染侧边栏读 f.id 会抛错、侧边栏整个空白。
+                // 这种条目本来就用不了，读的时候筛掉（下次保存时自然就清掉了）
+                parsed.folders = parsed.folders.filter(f => f && typeof f === 'object' && f.id != null);
+                parsed.files = parsed.files.filter(f => f && typeof f === 'object' && f.id != null);
                 if (!parsed.folders.some(f => f && f.id === 'root')) parsed.folders.unshift({ id: 'root', name: '默认文件夹', isOpen: true });
                 return parsed;
             } catch (e) {
@@ -746,10 +752,17 @@
                     : '本地保存的文档数据读不出来，而且浏览器空间不够，没能另存备份。为了不覆盖这份原始数据，下载下来之前暂时不能保存任何修改。',
                 buttons: [{ text: '稍后', value: 'later', style: 'cancel' }, { text: '下载原始数据', value: 'dl', bold: true }]
             });
-            if (v === 'dl') {
-                downloadText(`markdown-reader-损坏数据-${dateStamp()}.txt`, corruptRaw, 'text/plain;charset=utf-8');
-                dbCorruptUnbacked = false;
-            }
+            if (v !== 'dl') return;
+            downloadText(`markdown-reader-损坏数据-${dateStamp()}.txt`, corruptRaw, 'text/plain;charset=utf-8');
+            if (!dbCorruptUnbacked) return;
+            // 网页没法知道下载到底成没成（iPhone 上会弹「下载」确认，用户可能点了取消）。没有别的备份时，
+            // 解除保护前要用户亲口确认已经存好——解除之后任何一次保存都会把这份唯一的原始数据覆盖掉。
+            const ok = await ask({
+                title: '原始数据存好了吗？',
+                message: '确认已经下载并存好之后，才会恢复保存功能。恢复之后，这份损坏的原始数据会被新的文档库覆盖。',
+                buttons: [{ text: '还没有', value: false, style: 'cancel', bold: true }, { text: '已经存好', value: true }]
+            });
+            if (ok === true) dbCorruptUnbacked = false;
         }
 
         const SAVE_FAIL_EDIT = '浏览器本地存储空间已满（或被禁用）。\n这次的修改还在编辑框里，请先复制出来，再删掉一些不用的文档后重试。';
@@ -766,7 +779,7 @@
                 showAlert('保存失败', failMsg || SAVE_FAIL_GENERIC);
                 return false;
             }
-            renderDrawer(); // 侧边栏关着时它自己会跳过
+            renderDrawer(db); // 侧边栏关着时它自己会跳过；把刚存的库传进去，不用再解析一遍
             maybeRequestPersist();
             return true;
         }
@@ -775,10 +788,11 @@
         // 原来侧边栏画出来时把整个库读进内存，之后展开文件夹、改名、置顶、移动、删除、拖动排序都是改这份
         // 旧副本再整份写回——同时开着两个标签页（或姊妹站数学公式阅读器）时，一边随手点一下文件夹，
         // 就把另一边刚保存的内容、刚新建的文档整份冲掉（审查报告 P1-2）。fn 返回 false 表示不用存。
+        // 存上了返回改好的那个库对象（调用方要读结果时直接用，不用再 getDB 解析一遍整库），没存上返回 false。
         function mutateDB(fn, failMsg) {
             const db = getDB();
             if (fn(db) === false) return false;
-            return saveDB(db, failMsg);
+            return saveDB(db, failMsg) ? db : false;
         }
 
         function newId() { return Date.now().toString() + Math.random().toString(36).slice(2, 6); }
@@ -1045,7 +1059,8 @@
             // 保存了、点了放弃、在 confirmLeaveEdit 里选了「不保存」、删除了这篇，或者根本没改。
             // 草稿只在「人还在编辑页」或「页面被关掉 / 杀掉」时才需要留着，那两种情况都不会走到这里。
             // （选「不保存」后又半路放弃的，人还在编辑页，草稿也就还在。）
-            if (prevState === 'edit' && editingId) { clearDraft(editingId); editingId = null; }
+            if (prevState === 'edit' && editingId) { clearOwnDraft(editingId); editingId = null; }
+            if (prevState === 'edit') { clearTimeout(previewTimer); previewDirty = false; } // 离开编辑页：还没到点的预览渲染作废
             hideResumePill();
             disablePosSave();
             currentState = newState;
@@ -1136,9 +1151,10 @@
 
         // 侧边栏关着时一律不画（打开时 openDrawer 会先把 drawerOpen 置真再画）：每画一次都要把整个库重新解析一遍，
         // 保存、别的标签页改库（storage 事件）都会来调这里，关着时画了也看不见。
-        function renderDrawer() {
+        // dbIn：调用方手里已经有最新的库（比如刚存完）就传进来，省一次整库解析
+        function renderDrawer(dbIn) {
             if (!drawerOpen) return;
-            let db = getDB();
+            let db = dbIn || getDB();
             historyList.innerHTML = '';
             if (searchQuery) { renderSearchResults(db); return; }
 
@@ -1652,7 +1668,7 @@
                 else { f.content = content; f.timestamp = Date.now(); }
             }, SAVE_FAIL_EDIT);
             if (!ok) return false;
-            currentFile = { ...getDB().files.find(x => x.id === id) };
+            currentFile = { ...ok.files.find(x => x.id === id) }; // ok 就是刚存进去的那个库
             originalContent = content;
             clearDraft(id);
             return true;
@@ -1692,22 +1708,34 @@
             try { const d = JSON.parse(localStorage.getItem(DRAFT_PREFIX + id) || 'null'); return d && typeof d.content === 'string' ? d : null; }
             catch (_) { return null; }
         }
-        function clearDraft(id) { clearTimeout(draftTimer); lsRemove(DRAFT_PREFIX + id); }
+        // 用户明确做了决定（保存成功、放弃修改、删除这篇、丢弃草稿）时用：不管草稿是谁写的都删
+        function clearDraft(id) { clearTimeout(draftTimer); lsRemove(DRAFT_PREFIX + id); ownDraft = null; }
+        // 自动清理（离开编辑页、内容改回原样）时用：只删「这个页面自己写的那份」。草稿键跟姊妹站共用，
+        // 另一个标签页（或数学公式阅读器）可能刚给同一篇写了它自己的草稿，那份不是我们的，不能顺手删掉。
+        let ownDraft = null; // { id, raw }：这个页面最后一次写进去的草稿原文
+        function clearOwnDraft(id) {
+            clearTimeout(draftTimer);
+            if (ownDraft && ownDraft.id === id && lsGet(DRAFT_PREFIX + id) === ownDraft.raw) lsRemove(DRAFT_PREFIX + id);
+            ownDraft = null;
+        }
         function scheduleDraftSave() { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraftNow, 800); }
         function saveDraftNow() {
             clearTimeout(draftTimer);
             if (currentState !== 'edit' || !currentFile) return;
             const v = editorTextarea.value;
-            if (v === originalContent) { lsRemove(DRAFT_PREFIX + currentFile.id); return; }
+            if (v === originalContent) { clearOwnDraft(currentFile.id); return; }
             // 空间满了存不了草稿就算了，不打扰；真正点保存时会提示
-            lsSet(DRAFT_PREFIX + currentFile.id, JSON.stringify({ content: v, base: originalContent, title: currentFile.title, at: Date.now() }));
+            const raw = JSON.stringify({ content: v, base: originalContent, title: currentFile.title, at: Date.now() });
+            if (lsSet(DRAFT_PREFIX + currentFile.id, raw)) ownDraft = { id: currentFile.id, raw };
         }
         async function restoreDraftIfAny() {
             const id = currentFile.id;
             const d = getDraft(id);
             if (!d) { pendingDraftRestore = null; return; }
             if (d.content === currentFile.content) { clearDraft(id); pendingDraftRestore = null; return; }
-            if (pendingDraftRestore === id) { pendingDraftRestore = null; editorTextarea.value = d.content; return; }
+            // 恢复了的草稿就算这次编辑自己的：之后选「不保存」离开时要一起删掉（clearOwnDraft 认的是 ownDraft）
+            const adopt = () => { editorTextarea.value = d.content; ownDraft = { id, raw: lsGet(DRAFT_PREFIX + id) }; };
+            if (pendingDraftRestore === id) { pendingDraftRestore = null; adopt(); return; }
             const changed = d.base !== currentFile.content;
             const v = await ask({
                 title: '有未保存的草稿',
@@ -1717,7 +1745,7 @@
             if (currentState !== 'edit' || !currentFile || currentFile.id !== id) return;
             // 按 Esc 关掉也当「恢复」：宁可多留一份，不能悄悄丢
             if (v === 'discard') clearDraft(id);
-            else { editorTextarea.value = d.content; }
+            else adopt();
         }
         function renderDraftBar() {
             draftBarSlot.innerHTML = '';
@@ -1790,11 +1818,13 @@
             updateTocActive();
         }
         const pctOf = pos => Math.min(100, Math.max(1, Math.round(pos.r * 100)));
-        let resumeTimer = null, resumeFor = null;
+        let resumeTimer = null, resumeFor = null, resumePos = null;
         function offerResume() {
             const pos = getReadPos(currentFile.id);
             if (!pos || pos.r < 0.02 || vRead.scrollHeight <= vRead.clientHeight) return;
             resumeFor = currentFile.id;
+            // 显示按钮时就把位置记下来：用户先随手滑了一下，新位置会把存着的那份覆盖掉，点按钮时再去读就跳错了
+            resumePos = pos;
             resumeText.textContent = `回到上次读到的位置 · ${pctOf(pos)}%`;
             resumePill.classList.add('show');
             clearTimeout(resumeTimer);
@@ -1803,9 +1833,8 @@
         function hideResumePill() { clearTimeout(resumeTimer); resumePill.classList.remove('show'); }
         document.getElementById('resume-go').onclick = () => {
             hideResumePill();
-            if (currentState !== 'read' || !currentFile || currentFile.id !== resumeFor) return;
-            const pos = getReadPos(currentFile.id);
-            if (pos) restoreReadPos(pos);
+            if (currentState !== 'read' || !currentFile || currentFile.id !== resumeFor || !resumePos) return;
+            restoreReadPos(resumePos);
         };
         document.getElementById('resume-close').onclick = hideResumePill;
 
@@ -2399,7 +2428,8 @@
         }
         async function flushPreview() {
             clearTimeout(previewTimer);
-            if (!previewDirty) return;
+            // 已经离开编辑页了（比如敲完字立刻 Ctrl+S）：别再在看不见的预览上整篇渲染一遍
+            if (currentState !== 'edit' || !previewDirty) return;
             previewDirty = false;
             // 只有没被后来的渲染取代的那一次才去定位，免得旧的那次跑完把预览滚回旧位置
             if (await renderMarkdown(editorTextarea.value, editorPreview)) scrollPreviewToCursor();
@@ -2456,7 +2486,8 @@
 
         // Ctrl/⌘+S 保存（原来会弹出浏览器的「网页另存为」）；Esc 关掉最上面的那一层（侧边栏、菜单、目录、提示）
         document.addEventListener('keydown', (e) => {
-            if (dialogOpen) return; // 弹框自己处理按键
+            // 弹框开着时按键交给弹框；但 Ctrl/⌘+S 还是要拦下浏览器的「网页另存为」
+            if (dialogOpen) { if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) e.preventDefault(); return; }
             if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
                 if (currentState === 'edit') { e.preventDefault(); saveEdit(); }
                 return;
@@ -2484,9 +2515,14 @@
         };
 
         // 示例文档固定 id。已经有了就直接打开（原来每次都用默认内容覆盖，你改过的示例会被悄悄改回去，P3-14）；
-        // 只有还是最早那版两行字的旧示例时，才换成现在这篇功能展示。
+        // 只有还是没人改过的旧默认内容时，才换成现在这篇功能展示。旧默认内容有两种：本站最早那版两行字；
+        // 姊妹站数学公式阅读器以前的示例（三道概率题）——两站共用文档库，那边原来也用 sample 这个 id
+        //（2026-10-09 起那边改用 sample-math，新示例里也收了这三道题），不认它的话这边点「示例」会打开那三道题。
         const SAMPLE_ID = 'sample';
-        const OLD_SAMPLE_CONTENT = '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！';
+        const OLD_SAMPLE_CONTENTS = [
+            '# 文件管理升级\n\n现在你可以点击左侧菜单栏顶部的**排序按钮**，自由切换按最新或最旧时间排序文件了！',
+            '这是一些概率论公式的测试：\n\n1. 单选选项：则 $P\\{X^2 = 1\\} = $ （B）\n2. 分布函数：则 $P\\{X \\leq 2\\} = $ （B）\n3. 二维分布：则 $P\\{6 < X \\leq 8, 5 < Y \\leq 10\\} = $ ( A )'
+        ];
         const SAMPLE_TITLE = '示例：功能展示';
         const SAMPLE_CONTENT = [
             '# 示例：功能展示',
@@ -2556,7 +2592,7 @@
         ].join('\n');
         headerUI.btnHomeSample.onclick = async () => {
             const existing = getDB().files.find(f => f.id === SAMPLE_ID);
-            if (!existing || existing.content === OLD_SAMPLE_CONTENT) {
+            if (!existing || OLD_SAMPLE_CONTENTS.includes(existing.content)) {
                 const ok = mutateDB(db => {
                     const ex = db.files.find(f => f.id === SAMPLE_ID);
                     if (ex) { ex.title = SAMPLE_TITLE; ex.content = SAMPLE_CONTENT; ex.timestamp = Date.now(); }
@@ -2570,8 +2606,8 @@
         // ================= 深浅色 =================
         // 没手动选过时跟着系统变（晚上系统切深色，页面也跟着变）；在这里手动点过就按你点的来。
         // 手动选回「跟系统当前一样」的那一种，就当作恢复跟随系统。
-        // 选择记在本站自己的 mdr-theme-choice；md-theme 是跟数学公式阅读器共用的老键，那边每次打开都会写，
-        // 分不清是不是手动选的，所以只在第一次升级时用它推断一次：跟系统不一样，说明当初是手动选的。
+        // 手动选择记在 mdr-theme-choice（跟数学公式阅读器共用：两站手动选的深浅色是同一个）。md-theme 是两站共用的老键，
+        // 旧版每次打开页面都会写它，分不清是不是手动选的，所以只在第一次升级时用它推断一次：跟系统不一样，说明当初是手动选的。
         const darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
         if (lsGet('mdr-theme-migrated') !== '1') {
             const legacy = lsGet('md-theme');
