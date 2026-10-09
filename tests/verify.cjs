@@ -544,7 +544,6 @@ async function caseRun(name, fn) {
                 const drawer = await c.ev(probe);
                 const bad = [home, read, edit, drawer].filter(p => p.sw > w || p.iw > w || p.vr > 0);
                 check(`${w} 宽：首页 / 阅读 / 编辑 / 侧边栏都没有横向溢出`, bad.length === 0, bad);
-                if (w === 390) { await c.ev("closeDrawer(); switchState('read')"); await sleep(1500); await c.vshot(path.join(require('os').tmpdir(), 'mdr-390-read.png')); }
             } finally { c.close(); }
         }
     });
