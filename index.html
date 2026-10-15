@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Markdown Reader</title>
+    <!-- 网站图标（2026-10-15，用户三选一选的 A：Markdown 的 M↓ 标志，蓝色跟 --apple-blue 同系）。
+         必须用 <link> 写明：这是项目页，浏览器 / iOS 不写时去找的是域名根目录 fjkkx77.github.io/ 下的文件，不是本站的。
+         icon.svg 是圆角版（标签页里四角透明）；favicon-32.png 是给不认 SVG 图标的浏览器的同款兜底；
+         apple-touch-icon.png 是 iPhone「添加到主屏幕」用的 180×180 不透明正方形——iOS 自己裁圆角，所以这张不能带圆角。
+         主屏幕名字用默认的 <title>（用户选的），没加 apple-mobile-web-app-title。三张图源文件都是 icon.svg 这一个设计，改图要三张一起重出。 -->
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     
     <!-- 版本全部钉死（2026-10-06）：原来 marked / marked-highlight / marked-katex-extension 三个地址都没写版本号。
          marked 从 v16 起不再提供 marked.min.js，CDN 是「回退到最后一个还有这个文件的版本」才给出 v15.0.12 的，
